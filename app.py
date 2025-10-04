@@ -544,11 +544,69 @@ def skin_analyzer_page():
     st.title("Skin Analyzer: AI-Powered Deep Scan 🔬")
     st.markdown("---")
     
-    st.info("💡 **Hyper-Warning**: This is a simulated analysis based on visual data interpretation algorithms.")
+    st.info("💡 **Hyper-Warning**: This is a simulated analysis based on visual data interpretation algorithms and self-reported metrics.")
     
-    uploaded_file = st.file_uploader("Upload a high-resolution, close-up image of your focus area (e.g., cheek or T-zone).", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("1. Apne focus area ki high-resolution photo upload karein (Jaise: Cheeks ya T-zone).", type=["jpg", "jpeg", "png"])
     
-    if uploaded_file is not None:
+    st.markdown("---")
+    st.subheader("2. Vistrit Jeevanशैली (Lifestyle) & Internal Factors Questionnaire 📝")
+    
+    # Initialize state for questionnaire submission
+    if 'analyzer_submitted' not in st.session_state:
+        st.session_state.analyzer_submitted = False
+        st.session_state.analyzer_inputs = {}
+
+    with st.form("deep_analyzer_form"):
+        col_q1, col_q2, col_q3 = st.columns(3)
+
+        # Column 1: Internal Factors
+        with col_q1:
+            st.markdown("#### **A. Internal Factors**")
+            stress_level = st.slider("2.1. Aapka average Stress Level (1=Low, 10=High)", 1, 10, 5)
+            water_intake = st.slider("2.2. Daily Water Intake (Liters mein)", 0.5, 4.0, 2.0, 0.5)
+            sleep_quality = st.select_slider("2.3. Neend (Sleep) ki Quality", options=['Poor', 'Average', 'Good', 'Excellent'], value='Average')
+            diet_type = st.selectbox("2.4. Aapki Diet (Aahar)", ['Balanced (Homemade)', 'High Sugar/Processed', 'High Dairy & Gluten', 'Strict Vegetarian/Vegan'])
+            gut_health = st.radio("2.5. Aapki pachan shakti (Gut Health) kaisi hai?", ['Good', 'Average', 'Poor (Bloating/Irregular)'])
+            
+        # Column 2: Environmental & Behavioral
+        with col_q2:
+            st.markdown("#### **B. Environment & Habits**")
+            weather_condition = st.selectbox("2.6. Aapke shehar ka current mausam (Weather)", ['Humid & Hot', 'Dry & Cold', 'Temperate (Moderate)', 'Urban & Polluted'])
+            sun_exposure = st.slider("2.7. Daily Sun Exposure (Minutes, bina SPF ke)", 0, 120, 15)
+            exercise_freq = st.selectbox("2.8. Exercise/Physical Activity (Per Week)", ['0 times', '1-2 times', '3-4 times', '5+ times'])
+            smoking = st.radio("2.9. Smoking/Alcohol ka sevan?", ['Never', 'Socially/Rarely', 'Daily'])
+            recent_travel = st.radio("2.10. Kya aapne recently travel kiya hai?", ['Yes (Air Travel/New Climate)', 'No'])
+            
+        # Column 3: Specific Symptoms
+        with col_q3:
+            st.markdown("#### **C. Specific Symptoms**")
+            acne_location = st.multiselect("2.11. Acne kis area mein hai? (Agar ho toh)", ['Forehead', 'Cheeks', 'Jawline/Chin (Hormonal)', 'Back/Chest'])
+            texture_concern = st.radio("2.12. Skin texture: Kya aapko roughness mehsoos hoti hai?", ['Smooth', 'Mild Roughness/Bumps', 'Significant Roughness/Bumps'])
+            flushing = st.radio("2.13. Kya aapki skin jaldi Laal (Flushing) ho jaati hai?", ['Rarely', 'Sometimes (After actives)', 'Often (Heat/Spicy food)'])
+            hormonal_changes = st.radio("2.14. Kya aap hormonal changes face kar rahe hain? (e.g., Pregnancy, PCOS, Menopause)", ['Yes', 'No', 'N/A'])
+            product_changes = st.text_area("2.15. Pichle 1 mahine mein use kiye naye products/medicines?", "N/A")
+            
+        # Submit Button
+        submitted = st.form_submit_button("🔬 Run Hyper-AI Deep Scan & Generate Report")
+
+    # --- Processing Logic Starts Here ---
+    if submitted:
+        if uploaded_file is None:
+            st.error("❌ Please upload a high-resolution image to run the AI scan.")
+            st.session_state.analyzer_submitted = False
+            return
+            
+        # Store questionnaire inputs in session state (or directly use them)
+        q_inputs = {
+            'stress_level': stress_level, 'water_intake': water_intake, 'sleep_quality': sleep_quality, 
+            'diet_type': diet_type, 'gut_health': gut_health, 'weather_condition': weather_condition, 
+            'sun_exposure': sun_exposure, 'exercise_freq': exercise_freq, 'smoking': smoking, 
+            'recent_travel': recent_travel, 'acne_location': acne_location, 'texture_concern': texture_concern,
+            'flushing': flushing, 'hormonal_changes': hormonal_changes, 'product_changes': product_changes
+        }
+        st.session_state.analyzer_inputs = q_inputs
+        st.session_state.analyzer_submitted = True
+        
         image = Image.open(uploaded_file)
         
         st.markdown("---")
@@ -556,11 +614,11 @@ def skin_analyzer_page():
         col_img, col_proc = st.columns([1, 2])
         
         with col_img:
-            st.image(image, caption='Image Submitted', use_column_width=True)
+            st.image(image, caption='Image Submitted (Visual Data)', use_column_width=True)
             
         with col_proc:
             st.markdown("### Processing Image with SkinovaNet 2.0 🤖")
-            st.markdown("_Running 12-layer Convolutional Analysis to detect subtle skin conditions..._")
+            st.markdown("_Running 12-layer Convolutional Analysis to detect subtle skin conditions... Aur aapke self-reported data ko merge kiya jaa raha hai..._")
             with st.spinner('Analyzing texture, color mapping, and subsurface artifacts...'):
                 import time
                 progress_bar = st.progress(0)
@@ -568,81 +626,137 @@ def skin_analyzer_page():
                     time.sleep(0.02)
                     progress_bar.progress(i + 1)
             progress_bar.empty()
-            st.success("✅ Analysis Complete! Generating Report.")
+            st.success("✅ Analysis Complete! Generating Professional Report.")
 
-        st.markdown("## 🔬 Comprehensive AI Scan Results")
         
-        # Hyper-Detailed Dummy AI Logic
+        # --- ENHANCED HYPER-PROFESSIONAL REPORT GENERATION ---
+        
+        # 1. AI Visual Assessment (Existing Dummy Logic)
         dummy_results = {
             "Acne Index (P. Acnes Activity)": random.choice(["Low", "Mild (Localized)", "Moderate (Diffuse)", "High (Severe)"]),
             "Pigmentation Index (Melanin Density)": random.choice(["Low", "Mild (Freckling)", "Moderate (Sun Damage)", "High (Melasma)"]),
             "Wrinkle Depth (Simulated)": random.choice(["Low (Dynamic only)", "Minimal (Fine Lines)", "Moderate (Static lines)", "Significant (Deep creases)"]),
-            "Pore Size & Clog Status": random.choice(["Tight & Clear", "Medium & Visible", "Enlarged & Clogged"]),
             "Hydration Level (TEWL Metric)": random.choice(["Optimal (Level 5)", "Good (Level 4)", "Fair (Level 3)", "Poor (Level 2)"]),
             "Redness/Inflammation Index": random.choice(["Minimal", "Localized (Around acne)", "Diffuse (General sensitivity)"]),
-            "Collagen Density (Est.)": random.choice(["High", "Average", "Below Average", "Low"]),
         }
         
-        # Determine the core issue for routine adjustment
-        # Find the metric with the "worst" rating (e.g., High, Severe, Poor)
-        rating_order = ["Low", "Minimal", "Optimal", "Good", "Average", "Tight", "Mild", "Medium", "Fair", "Localized", "Diffuse", "Below Average", "High", "Significant", "Severe", "Poor"]
-        core_issue = max(dummy_results, key=lambda k: rating_order.index(dummy_results[k].split('(')[0].strip()))
+        # 2. Score Deduction/Addition based on Questionnaire (New Logic)
+        internal_risk_score = 0
         
-        routine_adjustment = ""
-        suggested_routine_change = ""
-
-        if "Acne Index" in core_issue and "Moderate" in dummy_results[core_issue]:
-            routine_adjustment = "**Immediate need for anti-bacterial and keratolytic agents.** Focus on gentle exfoliation."
-            suggested_routine_change = "Add 2% Salicylic Acid serum (PM, 3x/week) and switch to an Oil-Free Gel Cleanser."
-        elif "Pigmentation Index" in core_issue and "High" in dummy_results[core_issue]:
-            routine_adjustment = "**Critical need for UV blockage and Tyrosinase inhibitors.** Strict sun avoidance."
-            suggested_routine_change = "Increase Vitamin C concentration (AM) and introduce a non-Hydroquinone lightener (Azelaic Acid, PM)."
-        elif "Wrinkle Depth" in core_issue and "Significant" in dummy_results[core_issue]:
-            routine_adjustment = "**Focus on deep dermal stimulation and matrix repair.** Higher grade active needed."
-            suggested_routine_change = "Upgrade PM Retinoid to a higher-potency Retinaldehyde and add a Peptide-rich cream (AM)."
-        elif "Hydration Level" in core_issue and "Poor" in dummy_results[core_issue]:
-            routine_adjustment = "**Barrier function is compromised. Stop all harsh actives temporarily.** Focus on humectants and occlusives."
-            suggested_routine_change = "Switch to a non-foaming cream cleanser and introduce an overnight Ceramide/Cholesterol mask."
-        else:
-            routine_adjustment = "Maintain current routine. Focus on prevention and minor optimization."
-            suggested_routine_change = "Your skin is balanced! Continue with your core routine and reassess in 30 days."
-
-        # Display results in a table-like structure
-        st.subheader("Key Biometric Indicators:")
-        res_cols = st.columns(3)
-        for i, (key, value) in enumerate(dummy_results.items()):
+        if q_inputs['stress_level'] >= 7: internal_risk_score += 5
+        if q_inputs['water_intake'] <= 1.5: internal_risk_score += 4
+        if q_inputs['sleep_quality'] == 'Poor': internal_risk_score += 5
+        if q_inputs['diet_type'] in ['High Sugar/Processed', 'High Dairy & Gluten']: internal_risk_score += 6
+        if q_inputs['gut_health'] == 'Poor (Bloating/Irregular)': internal_risk_score += 5
+        if q_inputs['sun_exposure'] > 30: internal_risk_score += 8
+        if q_inputs['flushing'] == 'Often (Heat/Spicy food)': internal_risk_score += 4
+        
+        
+        st.markdown("## 🔬 Hyper-Professional Analysis Report (Visual + Internal Data)")
+        
+        # --- SECTION 1: CORE BIOMETRIC INDICATORS (From Image Scan) ---
+        st.subheader("1. Clinical Biometric Indicators (AI Visual Scan) 🖼️")
+        
+        res_cols = st.columns(5)
+        indicator_data = list(dummy_results.items())
+        
+        for i, (key, value) in enumerate(indicator_data):
             # Simple color logic based on the rating word
-            color = "#4CAF50" if value.startswith(("Low", "Minimal", "Optimal", "Good", "High")) else ("#FFC300" if value.startswith(("Mild", "Medium", "Average", "Fair", "Localized")) else "#FF4B4B")
-            with res_cols[i % 3]:
+            color = "#4CAF50" if value.startswith(("Low", "Minimal", "Optimal", "Good")) else ("#FFC300" if value.startswith(("Mild", "Moderate", "Fair", "Localized")) else "#FF4B4B")
+            with res_cols[i % 5]:
                  st.markdown(f"""
-                <div class="skinova-card" style="padding: 15px; border-left: 5px solid {color};">
-                    <p style='font-size: 14px; margin-bottom: 0; color: #777;'>{key}</p>
+                <div class="skinova-card" style="padding: 15px; border-left: 5px solid {color}; min-height: 120px;">
+                    <p style='font-size: 14px; margin-bottom: 0; color: #777;'>{key.split('(')[0].strip()}</p>
                     <p style='font-size: 18px; font-weight: bold; color: {color}; margin-top: 5px;'>{value}</p>
                 </div>
                 """, unsafe_allow_html=True)
+
+        st.markdown("---")
         
+        # --- SECTION 2: ROOT CAUSE ANALYSIS (From Questionnaire) ---
+        st.subheader("2. Root Cause & Internal Health Impact 🧠")
+        
+        internal_summary = []
+        
+        if internal_risk_score >= 20:
+            st.error(f"🔴 High Internal Risk Score ({internal_risk_score}): Aapki skin ki problems ka main reason aapki life style mein ho sakta hai.")
+        elif internal_risk_score >= 10:
+            st.warning(f"🟡 Moderate Internal Risk Score ({internal_risk_score}): Internal factors aapki skin routine ko support nahi kar rahe hain.")
+        else:
+            st.success(f"🟢 Low Internal Risk Score ({internal_risk_score}): Aapki lifestyle aapki skin health ke liye supportive hai.")
+            
+        # Detailed Internal Analysis
+        if q_inputs['stress_level'] >= 7 or q_inputs['sleep_quality'] == 'Poor':
+            internal_summary.append("Stress & Sleep: **Cortisol Levels high** hone ke kaaran inflammation aur oil production badh sakti hai. (Needs stress management)")
+        
+        if q_inputs['water_intake'] <= 1.5:
+             internal_summary.append("Dehydration: **Transepidermal Water Loss (TEWL) ka khatra** zyada hai, jisse skin dry aur barrier weak ho sakti hai.")
+             
+        if q_inputs['diet_type'] != 'Balanced (Homemade)':
+            internal_summary.append("Dietary Impact: **High Glycemic Load** se insulin spikes ho sakte hain, jo hormonal acne aur inflammation ko badhaate hain.")
+
+        if q_inputs['hormonal_changes'] == 'Yes' or 'Jawline/Chin' in q_inputs['acne_location']:
+            internal_summary.append("Hormonal Driver: **Androgen Sensitivity** ke kaaran jawline/chin area mein persistent breakouts ho rahe hain. (Requires specific topical treatment)")
+            
+        if q_inputs['weather_condition'] in ['Humid & Hot', 'Dry & Cold']:
+            internal_summary.append(f"Environmental Stress: **{q_inputs['weather_condition']}** climate mein skin ko adjust karne mein mushkil ho rahi hai, jisse barrier damage ya oil imbalance ho raha hai.")
+
+        for item in internal_summary:
+            st.markdown(f"• {item}")
+        
+        st.markdown("---")
+
+        # --- SECTION 3: HYPER-PRESCRIPTION & ACTION PLAN (Professional Tone) ---
+        st.subheader("3. Hyper-Prescription: Targeted Action Plan 🎯")
+
+        st.markdown(f"**A. Immediate Internal Focus (Lifestyle):**")
+        if internal_risk_score >= 10:
+            st.markdown(f"1. **Hydration & Detox:** Daily minimum **{max(2.5, q_inputs['water_intake'])} Liters** paani piyein. (Increase focus on water)")
+            st.markdown("2. **Anti-Inflammatory Diet:** High sugar/dairy intake ko 50% tak kam karein, aur **omega-3 rich foods** (Flaxseeds, Nuts) ko diet mein shaamil karein.")
+            st.markdown("3. **Routine Time-Block:** Daily 7-8 ghante ki **consistent neend** (sleep) ko maintain karein.")
+        else:
+            st.markdown("1. **Maintain Consistency:** Aapki lifestyle achhi hai, bas **routine consistency** (daily tracking) par dhyaan dein.")
+
+        st.markdown(f"**B. Topical Routine Adjustments (Hyper-Change):**")
+        
+        suggested_routine_change = ""
+        
+        # Complex logic to recommend the main active
+        if "High (Severe)" in dummy_results["Acne Index (P. Acnes Activity)"]:
+            suggested_routine_change = "Evening mein **Prescription-Grade Retinoid** (Tretinoin, agar tolerance ho) ya **Benzoyl Peroxide** (Spot Treatment) shuru karein."
+        elif "High (Melasma)" in dummy_results["Pigmentation Index (Melanin Density)"]:
+            suggested_routine_change = "AM routine mein **15%+ L-Ascorbic Acid** serum ko shamil karein aur PM mein **Hydroquinone/Kojic Acid** (Derm-guided) ya **Alpha-Arbutin** use karein. **SPF ko 4 ghante mein re-apply karein.**"
+        elif "Significant (Deep creases)" in dummy_results["Wrinkle Depth (Simulated)"]:
+            suggested_routine_change = "PM routine mein **Peptide Rich Serum** ko **Retinaldehyde** se pehle use karein (Sandwich Method) for dermal matrix support."
+        elif "Poor (Level 2)" in dummy_results["Hydration Level (TEWL Metric)"]:
+            suggested_routine_change = "Turant saare **harsh foaming cleansers** aur **alcohol-based toners** band karein. **Ceramide, Cholesterol, Hyaluronic Acid** waale products ko priority dein."
+        else:
+            suggested_routine_change = "Aapki skin balanced hai. **Aapki current routine sahi hai**, bas **hydration** aur **antioxidant support** ko maintain rakhein."
+
         st.markdown(f"""
             <div class="skinova-card" style="margin-top: 20px; background-color: {SOFT_BLUE}10;">
-                <h4 style='margin-top:0; color:{DARK_ACCENT}'>AI Hyper-Prescription Summary:</h4>
-                <p style='font-size: 18px; font-weight: 500;'>**Core Issue Identified:** {core_issue} ({dummy_results[core_issue]})</p>
-                <p style='font-size: 16px;'>**Actionable Adjustment:** {routine_adjustment}</p>
-                <p style='font-size: 16px;'>**Suggested Routine Change:** *{suggested_routine_change}*</p>
+                <h4 style='margin-top:0; color:{DARK_ACCENT}'>Hyper-Action Recommendation:</h4>
+                <p style='font-size: 16px; font-weight: 500;'>**Primary Focus Area:** {max(dummy_results, key=lambda k: indicator_data.index((k, dummy_results[k]))).split('(')[0].strip()} </p>
+                <p style='font-size: 16px;'>**Main Topical Change:** *{suggested_routine_change}*</p>
+                <p style='font-size: 14px; font-style: italic;'>**Next Re-scan:** 6 Weeks mein.</p>
             </div>
             """, unsafe_allow_html=True)
             
         # Button to automatically update the routine
         if st.button("Apply Suggested Routine Change and Update Profile Score", key='apply_routine'):
             
-            # Complex modification logic: We assume the suggested change overrides the 'Treatment' step
             current_routine = st.session_state.user_data_profile.get('Routine', {})
             
-            # Update the appropriate step based on the suggestion
-            if 'BHA' in suggested_routine_change or 'Azelaic Acid' in suggested_routine_change:
-                current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'Retinoid' not in step and 'Treatment' not in step]
-                current_routine['Evening'].insert(2, 'New: BHA/Azelaic Acid Treatment')
-            elif 'Retinaldehyde' in suggested_routine_change or 'Peptide-rich' in suggested_routine_change:
-                 current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'BHA' not in step and 'Treatment' not in step]
-                 current_routine['Evening'].insert(2, 'New: High-Potency Anti-Aging Treatment')
+            # Simple Update Logic (Modifying Evening Treatment Step)
+            if 'Retinoid' in suggested_routine_change or 'Benzoyl Peroxide' in suggested_routine_change:
+                current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'Treatment' not in step]
+                current_routine['Evening'].insert(2, 'New: Potent Acne/Anti-Aging Treatment Applied')
+            elif 'Hydroquinone' in suggested_routine_change or 'Arbutin' in suggested_routine_change:
+                 current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'Treatment' not in step]
+                 current_routine['Evening'].insert(2, 'New: Pigmentation Fading Treatment Applied')
+            elif 'Ceramide' in suggested_routine_change:
+                current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'Treatment' not in step]
+                current_routine['Evening'].insert(2, 'New: Barrier Repair Focus Serum/Cream')
             
             # Score bonus for taking immediate action
             new_score = st.session_state.skin_score + random.randint(1, 3) 
@@ -657,6 +771,12 @@ def skin_analyzer_page():
             st.success("Routine successfully updated! Check 'My Routine' page.")
             navigate_to('My Routine')
             st.experimental_rerun()
+            
+    # Display the last generated report data if it exists and the form wasn't just submitted
+    elif st.session_state.analyzer_submitted:
+        st.info("Last scan data is available. Click 'Run Hyper-AI Deep Scan' again to analyze new data.")
+        # If the user revisits the page, we can show their last inputs/results summary here if desired, 
+        # but for simplicity, we just prompt them to re-run the form.
 
 
 ### ---
@@ -696,7 +816,9 @@ def my_routine_page():
 
     def recalculate_score_and_save():
         # Step 1: Calculate Routine Compliance Score for today
-        total_steps = sum(len(v) for v in routine_steps_dict.values())
+        routine_steps = st.session_state.user_data_profile.get('Routine', {})
+        total_steps = sum(len(v) for v in routine_steps.values())
+
         
         # Get latest progress from session state
         latest_progress = st.session_state.daily_progress.get(today_key, {'AM': [], 'PM': []})
