@@ -75,7 +75,6 @@ st.markdown(f"""
     .skinova-card {{
         padding: 25px;
         border-radius: 15px;
-        background: {WHITE};
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
         margin-bottom: 25px;
         border-left: 6px solid {SOFT_BLUE};
