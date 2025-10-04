@@ -97,7 +97,6 @@ st.markdown(f"""
     /* Buttons Styling */
     div.stButton > button:first-child {{
         background: linear-gradient(145deg, {SOFT_BLUE}, {DARK_ACCENT});
-        color: {WHITE};
         border: none;
         border-radius: 10px;
         padding: 12px 25px;
