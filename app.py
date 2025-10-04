@@ -331,10 +331,10 @@ def onboarding_page():
     
     st.subheader("We need comprehensive data for the ultimate personalized routine.")
     
-    tab1, tab2, tab3 = st.tabs(["Personal Info", "Concerns & History", "Lifestyle & Goals"])
-
+    # --- FIX START: Moved st.tabs INSIDE st.form context ---
     with st.form("onboarding_form", clear_on_submit=False):
-        
+        tab1, tab2, tab3 = st.tabs(["Personal Info", "Concerns & History", "Lifestyle & Goals"])
+
         # --- TAB 1: Baseline Data (Enhanced Detail) ---
         with tab1:
             st.markdown("### Step 1: Baseline Data")
@@ -366,6 +366,7 @@ def onboarding_page():
             
             st.markdown("---")
             submitted = st.form_submit_button("✅ Finalize Personalized Profile")
+    # --- FIX END: Form ends here, submitted logic follows ---
 
     if submitted:
         if len(concerns) < 2 or not goal:
@@ -379,7 +380,7 @@ def onboarding_page():
             
             # 2. Concern Penalty (Severe concerns drop score more)
             if any('Melasma' in c or 'Wrinkles' in c for c in concerns): base_score -= 8
-            if any('Acne & Breakouts' in c for c in concerns): base_score -= 5
+            if any('Acne' in c for c in concerns): base_score -= 5
             
             # 3. Sensitivity & Fitzpatrick Penalty
             if sensitivity_level in ['High/Reactive']: base_score -= 7
