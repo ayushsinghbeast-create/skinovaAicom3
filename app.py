@@ -1073,16 +1073,16 @@ def skincare_academy_page():
         
         with col_v1:
             st.subheader("1. Decoding TEWL (Water Loss)")
-            st.components.v1.iframe("https://www.youtube.com/embed/g8l9_F-x_Yw", height=250)
+            st.components.v1.iframe("https://youtube.com/shorts/UJANPbD8eQg?si=5wGaUexK3-z_DFJy", height=250)
             st.markdown("Understand Trans-Epidermal Water Loss and how to combat it with occlusives and humectants.")
             
         with col_v2:
             st.subheader("2. Barrier Function & Ceramides")
-            st.components.v1.iframe("https://www.youtube.com/embed/q4X0Qo-D5Yk", height=250)
+            st.components.v1.iframe("https://youtube.com/shorts/osaExOh7geI?si=gNGFZnyj-FmXIazG", height=250)
             st.markdown("The science of skin barrier repair and the essential role of Ceramides and Essential Fatty Acids.")
 
         st.subheader("3. P. Acnes, Sebum, and Inflammation")
-        st.components.v1.iframe("https://www.youtube.com/embed/4y8w0fD8lIw", height=250)
+        st.components.v1.iframe("https://youtube.com/shorts/osaExOh7geI?si=cj1yyiAaBvgavbpI", height=250)
         st.markdown("A deep dive into the complex pathogenesis of acne vulgaris and modern treatment modalities (BHA, BP, Azelaic Acid).")
 
     with tab_art:
