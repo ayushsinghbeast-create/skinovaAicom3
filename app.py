@@ -1,5 +1,4 @@
 import streamlit as st
-import gspread
 import pandas as pd
 from PIL import Image
 from io import StringIO, BytesIO
@@ -7,25 +6,25 @@ import random
 from datetime import datetime, date, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
-from gspread import Client, Spreadsheet, Worksheet
 
 # --- 1. CONFIGURATION & HYPER-POLISHED UI SETUP ---
 
-# Custom Colors
+# Custom Colors (Same beautiful theme)
 SOFT_BLUE = "#6EC1E4"
 DARK_ACCENT = "#3C8CB0"
 LIGHT_BG = "#F9FCFF"
 TEXT_COLOR = "#333333"
+WHITE = "#FFFFFF"
 
 # Page Configuration
 st.set_page_config(
-    page_title="SkinovaAI: Hyper-Personalized Skincare",
+    page_title="SkinovaAI: Hyper-Personalized Skincare (Session)",
     page_icon="🧴",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Apply Extensive Custom CSS for Theme, Fonts, and Hyper-Polish
+# Apply Extensive Custom CSS for Theme, Fonts, and Hyper-Polish (150+ lines of CSS alone!)
 st.markdown(f"""
     <style>
     /* Global App Styling */
@@ -75,6 +74,7 @@ st.markdown(f"""
     .skinova-card {{
         padding: 25px;
         border-radius: 15px;
+        background: {WHITE};
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
         margin-bottom: 25px;
         border-left: 6px solid {SOFT_BLUE};
@@ -97,6 +97,7 @@ st.markdown(f"""
     /* Buttons Styling */
     div.stButton > button:first-child {{
         background: linear-gradient(145deg, {SOFT_BLUE}, {DARK_ACCENT});
+        color: {WHITE};
         border: none;
         border-radius: 10px;
         padding: 12px 25px;
@@ -119,150 +120,92 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 
-# --- 2. GOOGLE SHEETS HYPER-INTEGRATION ---
+# --- 2. SESSION STATE HYPER-INITIALIZATION (Internal DB) ---
 
-# NOTE: Using Streamlit Secrets for robust deployment simulation.
-# If running locally, you must create a dummy 'credentials.json' or define st.secrets.
-try:
-    gc: Client = gspread.service_account_from_dict(st.secrets.get("gcp_service_account", {}))
-except Exception:
-    # Local fallback or dummy connector logic
-    class DummySheet:
-        def get_all_records(self): return []
-        def append_row(self, row): pass
-        def row_values(self, row): return ['Name', 'Email', 'Age', 'Location', 'Concerns', 'Skin Score', 'Routine', 'Last Login']
-        def update(self, range_name, values): pass
-    class DummyWorksheet:
-        def worksheet(self, title): return DummySheet()
-    class DummyClient:
-        def open_by_url(self, url): return DummyWorksheet()
-        def worksheet(self, title): return DummySheet()
-    gc = DummyClient()
-    st.info("Using Dummy Google Sheet Connector. Data will not persist outside this session.")
-
-
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1FduUP69UAMYGTXoDGKHu9_Mhgyv3bWR1HJSle7t-iSs/edit?usp=drivesdk"
-
-try:
-    sh: Spreadsheet = gc.open_by_url(SHEET_URL)
-    worksheet: Worksheet = sh.worksheet("Users")
-except Exception as e:
-    st.error(f"Sheet Access Error: {e}")
-    # Fallback to dummy sheet list for structure
-    worksheet = DummySheet()
+# This dictionary acts as our in-memory database, storing all user data
+if 'user_db' not in st.session_state:
+    st.session_state.user_db = {}
     
-# Helper function to get the current date's string key
-def get_today_key():
-    return date.today().strftime("%Y-%m-%d")
-
-# --- 3. SESSION STATE HYPER-INITIALIZATION ---
-
+# Initialize core session flags
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.current_page = 'Login/Signup'
     st.session_state.user_email = None
-    st.session_state.onboarding_complete = False
+    
+# Initialize current user's ephemeral data for the session (will be loaded on login)
+if 'user_data_profile' not in st.session_state:
     st.session_state.user_data_profile = {}
-    
-    # Hyper-Routine Tracking (Detailed per step and date)
-    st.session_state.daily_progress = {} # {'2025-10-01': [True, False, True, False, ...]}
+    st.session_state.onboarding_complete = False
     st.session_state.routine_streak = 0
-    st.session_state.last_login_date = date.today()
+    st.session_state.skin_score = 75
+    st.session_state.skin_score_history = [75] * 30 
+    st.session_state.daily_progress = {} # {'2025-10-01': {'AM': [True, False], 'PM': [True, True]}}
+    st.session_state.last_login_date = date.today().strftime("%Y-%m-%d")
+
+# Initialize feature-specific data (Forum, Consult Logs)
+if 'forum_posts' not in st.session_state:
+    st.session_state.forum_posts = [] # Log of all community posts
+if 'consult_requests' not in st.session_state:
+    st.session_state.consult_requests = [] # Log of all expert consult requests
+
+
+# --- 3. DATA UTILITY FUNCTIONS (Session-State Based) ---
+
+def create_new_user(name, email):
+    """Creates a new user entry in the internal database."""
+    initial_score = random.randint(60, 85)
     
-    # Dummy Hyper-Score History (30 days)
-    start_score = random.randint(60, 90)
-    st.session_state.skin_score_history = [start_score + random.randint(-2, 3) for _ in range(30)]
-    st.session_state.skin_score = st.session_state.skin_score_history[-1]
+    # Detailed Initial User Profile Structure
+    st.session_state.user_db[email] = {
+        'Name': name,
+        'Email': email,
+        'Age': None, # Onboarding required
+        'Location': None,
+        'Skin_Type': None,
+        'Concerns': [],
+        'Allergies': 'None',
+        'Sensitivity': 'Mild',
+        'Goal': 'Hydration & Barrier Repair',
+        'Budget': '$50 - $100',
+        'Routine': {}, # Detailed routine dictionary (AM/PM steps)
+        
+        # State Tracking
+        'Skin Score': initial_score,
+        'Score_History': [initial_score] * 30, # 30 days of initial score
+        'Routine_Progress': {},
+        'Streak': 1,
+        'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'Onboarding_Complete': False
+    }
+    return st.session_state.user_db[email]
 
-
-# --- 4. DATA UTILITY FUNCTIONS (Enhanced) ---
-
-@st.cache_data(ttl=60)
-def load_data():
-    """Load the user data from Google Sheet into a DataFrame."""
-    try:
-        df = pd.DataFrame(worksheet.get_all_records())
-        # Ensure all core columns exist, even if empty
-        required_cols = ['Name', 'Email', 'Age', 'Location', 'Concerns', 'Skin Score', 'Routine', 'Last Login', 'Routine_Progress', 'Streak']
-        for col in required_cols:
-            if col not in df.columns:
-                df[col] = ''
-        return df
-    except Exception as e:
-        st.error(f"Error loading user data: {e}")
-        return pd.DataFrame(columns=required_cols)
-
-def get_user_row(email):
-    """Retrieves the full DataFrame row for the logged-in user."""
-    df = load_data()
-    if email in df['Email'].values:
-        return df[df['Email'] == email].iloc[0].to_dict()
-    return {}
+def get_user_data(email):
+    """Retrieves the full profile data for a given email."""
+    return st.session_state.user_db.get(email, {})
 
 def save_user_data(email, update_dict):
-    """
-    Finds the user's row and updates specific columns.
-    Handles data serialization for complex objects.
-    """
-    try:
-        df = load_data()
-        if df.empty or email not in df['Email'].values:
-            st.error("Cannot save data: User not found or sheet error.")
-            return False
-
-        row_index = df[df['Email'] == email].index[0]
-        row_num = row_index + 2 # +2 for 1-indexing and header row
-
-        # Prepare update dictionary with potential serialization
-        header = worksheet.row_values(1)
-        update_list = worksheet.row_values(row_num)
-
-        for col_name, value in update_dict.items():
-            if col_name in header:
-                col_index = header.index(col_name)
-                # Serialize complex data types (lists, dicts)
-                if isinstance(value, (list, dict)):
-                    update_list[col_index] = str(value) # Using str() for simple dicts/lists
-                else:
-                    update_list[col_index] = str(value)
-        
-        # Ensure the list size matches the header size for safe update
-        if len(update_list) < len(header):
-             update_list.extend([''] * (len(header) - len(update_list)))
-
-        worksheet.update(f'A{row_num}:Z{row_num}', [update_list])
-        
-        load_data.clear() # Invalidate cache
+    """Updates specific fields for the user in the internal database."""
+    if email in st.session_state.user_db:
+        st.session_state.user_db[email].update(update_dict)
+        # Also update the ephemeral session profile immediately
+        st.session_state.user_data_profile.update(update_dict)
         return True
+    return False
 
-    except Exception as e:
-        st.error(f"An error occurred during hyper-data save: {e}")
-        return False
+def get_today_key():
+    """Helper function to get the current date's string key."""
+    return date.today().strftime("%Y-%m-%d")
 
-def parse_routine_progress(progress_str):
-    """Parses the routine progress string back into a dictionary or list."""
-    if not progress_str or progress_str == 'None':
-        return {}
-    try:
-        return eval(progress_str) # Safely evaluate the string representation of dict/list
-    except:
-        return {}
-        
-def parse_score_history(history_str):
-    """Parses the score history string back into a list of integers."""
-    if not history_str:
-        return [random.randint(60, 90) for _ in range(30)] # Default to dummy 30 days
-    try:
-        return [int(x.strip()) for x in history_str.strip('[]').split(',') if x.strip()]
-    except:
-        return [random.randint(60, 90) for _ in range(30)]
 
-# --- 5. PAGE NAVIGATION & AUTH ---
+# --- 4. PAGE NAVIGATION & AUTH ---
 
 def navigate_to(page):
+    """Changes the current page view."""
     st.session_state.current_page = page
 
 def logout():
+    """Resets session state and returns to login page."""
+    # Only reset ephemeral session flags, keep the DB intact
     st.session_state.logged_in = False
     st.session_state.user_email = None
     st.session_state.user_data_profile = {}
@@ -273,40 +216,59 @@ def initialize_user_session(email, user_data):
     """Initializes session state with hyper-user data upon login/signup."""
     st.session_state.logged_in = True
     st.session_state.user_email = email
+    
+    # Load all persistent data into the ephemeral session state
     st.session_state.user_data_profile = user_data
+    st.session_state.onboarding_complete = user_data.get('Onboarding_Complete', False)
+    st.session_state.daily_progress = user_data.get('Routine_Progress', {})
+    st.session_state.routine_streak = user_data.get('Streak', 0)
+    st.session_state.skin_score = user_data.get('Skin Score', 75)
+    st.session_state.skin_score_history = user_data.get('Score_History', [75] * 30)
     
-    # Check if 'Age' column is filled to determine onboarding status
-    st.session_state.onboarding_complete = bool(user_data.get('Age')) 
     
-    # Load complex data structures
-    st.session_state.daily_progress = parse_routine_progress(user_data.get('Routine_Progress', '{}'))
-    st.session_state.routine_streak = int(user_data.get('Streak', 0))
-    st.session_state.skin_score = int(user_data.get('Skin Score', random.randint(60, 90)))
-    st.session_state.skin_score_history = parse_score_history(user_data.get('Score_History', ''))
+    # --- HYPER-LOGIN STREAK CHECK & DAILY SCORE UPDATE ---
+    last_login_str = user_data.get('Last Login', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    last_login_dt = datetime.strptime(last_login_str, "%Y-%m-%d %H:%M:%S").date()
+    today = date.today()
     
-    # Daily Login Streak Check and Score Update
-    if 'Last Login' in user_data:
-        last_login_dt = datetime.strptime(user_data['Last Login'], "%Y-%m-%d %H:%M:%S").date()
-        today = date.today()
+    score_change = 0
+    
+    if last_login_dt < today:
+        # Check if they completed their routine yesterday (Hypothetical full completion check)
+        yesterday_key = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday_progress = st.session_state.daily_progress.get(yesterday_key, {'AM': [False, False], 'PM': [False, False]})
         
-        # Streak maintenance/increase logic
-        if last_login_dt == today:
-            pass # Already logged in today
-        elif last_login_dt == today - timedelta(days=1):
-            st.session_state.routine_streak += 1
-            st.toast(f"🔥 Streak maintained! Now at {st.session_state.routine_streak} days!", icon='🏆')
+        total_steps_yesterday = sum(len(v) for v in yesterday_progress.values())
+        completed_steps_yesterday = sum(v.count(True) for v in yesterday_progress.values())
+        
+        if completed_steps_yesterday >= (total_steps_yesterday * 0.8): # 80% compliance
+            st.session_state.routine_streak = st.session_state.routine_streak + 1 if last_login_dt == today - timedelta(days=1) else 1
+            score_change += 2 # Small passive reward for consistency
+            st.toast(f"🔥 Streak maintained! Now at {st.session_state.routine_streak} days. (+2 Score)", icon='🏆')
         else:
-            if st.session_state.routine_streak > 0:
-                st.toast(f"😔 Streak lost ({st.session_state.routine_streak} days). Start fresh today!", icon='💔')
-            st.session_state.routine_streak = 1 # Start new streak
+            if st.session_state.routine_streak > 0 and last_login_dt == today - timedelta(days=1):
+                st.toast(f"😔 Yesterday's routine compliance was low. Streak lost ({st.session_state.routine_streak} days).", icon='💔')
+            st.session_state.routine_streak = 1 # Start new streak regardless
+            score_change -= 1 # Small penalty for low compliance
 
-    save_user_data(email, {
-        'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'Streak': st.session_state.routine_streak
-    })
+        # Append today's score to history and cap at 30 days
+        st.session_state.skin_score += score_change
+        st.session_state.skin_score = max(50, min(99, st.session_state.skin_score)) 
+        st.session_state.skin_score_history.append(st.session_state.skin_score)
+        st.session_state.skin_score_history = st.session_state.skin_score_history[-30:]
+        
+        # Save all changes back to the internal database
+        save_user_data(email, {
+            'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'Streak': st.session_state.routine_streak,
+            'Skin Score': st.session_state.skin_score,
+            'Score_History': st.session_state.skin_score_history
+        })
+        
+    st.experimental_rerun()
 
 
-# --- 6. CORE FEATURE FUNCTIONS (PAGES) ---
+# --- 5. CORE FEATURE FUNCTIONS (PAGES) ---
 
 ## 1. Login & Signup (Detailed UI/UX)
 def login_signup_page():
@@ -321,29 +283,20 @@ def login_signup_page():
         with st.form("signup_form"):
             new_name = st.text_input("Full Name *", key="s_name")
             new_email = st.text_input("Email Address *", key="s_email")
-            st.markdown("_Your email will be your unique identifier._")
+            st.markdown("_Your email will be your unique identifier. **No passwords needed!**_", help="We simulate a secure token-based login for simplicity.")
             
             signup_submitted = st.form_submit_button("🚀 Create Account & Start Onboarding")
 
             if signup_submitted:
-                df = load_data()
-                if new_email in df['Email'].values:
+                if new_email in st.session_state.user_db:
                     st.error("🚫 Duplicate email entry. An account with this email already exists. Please log in.")
                 elif not new_name or not new_email or '@' not in new_email:
                     st.warning("Please enter a valid Name and Email.")
                 else:
-                    # Initial data structure for new user
-                    initial_score = random.randint(60, 85)
-                    new_user_data = [
-                        new_name, new_email, '', '', '', 
-                        initial_score, 'Basic Routine: Cleanser, Moisturizer, SPF', 
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                        '{}', 1, f'[{initial_score}]' # Routine_Progress, Streak, Score_History
-                    ]
-                    worksheet.append_row(new_user_data)
+                    user_data = create_new_user(new_name, new_email)
                     st.success("🎉 Account created successfully! Redirecting to hyper-onboarding...")
                     
-                    initialize_user_session(new_email, get_user_row(new_email))
+                    initialize_user_session(new_email, user_data)
                     navigate_to('Onboarding')
                     st.experimental_rerun()
 
@@ -355,12 +308,13 @@ def login_signup_page():
             login_submitted = st.form_submit_button("➡️ Login to Dashboard")
             
             if login_submitted:
-                df = load_data()
-                if login_email in df['Email'].values:
-                    user_data = get_user_row(login_email)
-                    initialize_user_session(login_email, user_data)
-
+                if login_email in st.session_state.user_db:
+                    user_data = get_user_data(login_email)
                     st.success("Welcome back! Redirecting...")
+                    
+                    # Initialization handles score/streak updates on login
+                    initialize_user_session(login_email, user_data)
+                    
                     if st.session_state.onboarding_complete:
                         navigate_to('Dashboard')
                     else:
@@ -381,85 +335,111 @@ def onboarding_page():
 
     with st.form("onboarding_form", clear_on_submit=False):
         
+        # --- TAB 1: Baseline Data (Enhanced Detail) ---
         with tab1:
             st.markdown("### Step 1: Baseline Data")
             user_age = st.slider("1. Age", min_value=12, max_value=80, value=25)
             user_gender = st.selectbox("2. Biological Gender", ['Female', 'Male', 'Non-Binary', 'Prefer not to say'])
-            user_location = st.selectbox("3. Current Climate/Location Type", 
+            user_ethnicity = st.selectbox("3. Fitzpatrick Skin Type (Determines Pigmentation Risk)", 
+                                           ['Type I (Always burns)', 'Type II (Burns easily)', 'Type III (Tans sometimes)', 'Type IV (Tans easily)', 'Type V (Rarely burns)', 'Type VI (Never burns)'])
+            user_location = st.selectbox("4. Current Climate/Location Type", 
                                           ['Tropical/Humid', 'Arid/Dry Desert', 'Temperate/Seasonal', 'Cold/Northern', 'Urban/Polluted'])
-            user_skin_type = st.radio("4. Self-Assessed Skin Type", ['Very Dry', 'Dry/Normal', 'Combination (Oily T-Zone)', 'Oily'])
+            user_skin_type = st.radio("5. Self-Assessed Skin Type (Basic)", ['Very Dry', 'Dry/Normal', 'Combination (Oily T-Zone)', 'Oily'])
         
+        # --- TAB 2: Skin History (Enhanced Detail) ---
         with tab2:
-            st.markdown("### Step 2: Skin History")
-            concerns = st.multiselect("5. Primary Skin Concerns (Select 2-4)",
-                                        ['Acne & Breakouts', 'Dryness & Dehydration', 'Redness & Sensitivity', 
-                                         'Dark Spots/Pigmentation', 'Fine Lines & Wrinkles', 'Loss of Firmness', 'Oil Control'],
-                                         default=['Acne & Breakouts'], max_selections=4)
-            allergy = st.text_input("6. Known Product Allergies (e.g., Lanolin, fragrance)", "None")
-            sensitivity_level = st.select_slider("7. Skin Sensitivity Level", options=['Low', 'Mild', 'Moderate', 'High'], value='Mild')
-            history_products = st.checkbox("8. Used Retinoids/AHAs before?")
+            st.markdown("### Step 2: Skin History & Concerns")
+            concerns = st.multiselect("6. Primary Skin Concerns (Select 2-4)",
+                                        ['Acne & Breakouts (Hormonal)', 'Acne & Breakouts (Fungal/Bacterial)', 'Dryness & Dehydration (Barrier)', 'Redness & Sensitivity (Rosacea)', 
+                                         'Dark Spots/Melasma/Pigmentation', 'Fine Lines & Wrinkles (Static)', 'Loss of Firmness/Elasticity', 'Oil Control/Excess Sebum'],
+                                         default=['Acne & Breakouts (Hormonal)', 'Oil Control/Excess Sebum'], max_selections=4)
+            allergy = st.text_input("7. Known Product Allergies (e.g., Lanolin, fragrance, harsh surfactants)", "None")
+            sensitivity_level = st.select_slider("8. Skin Sensitivity Level (How easily does your skin react?)", options=['Low', 'Mild', 'Moderate', 'High/Reactive'], value='Moderate')
+            history_products = st.checkbox("9. Have you used prescription-strength actives (Retinoids/AHAs > 10%) before?")
         
+        # --- TAB 3: Goals & Habits (Enhanced Detail) ---
         with tab3:
             st.markdown("### Step 3: Goals & Habits")
-            goal = st.selectbox("9. Primary Skincare Goal", ['Acne Clearing', 'Anti-Aging & Firming', 'Hydration & Barrier Repair', 'Brightening & Even Tone'])
-            budget = st.select_slider("10. Expected Monthly Budget (USD)", options=['$20 - $50', '$50 - $100', '$100+'])
+            goal = st.selectbox("10. Primary Skincare Goal", ['Acne Clearing & Scar Reduction', 'Advanced Anti-Aging & Firming', 'Max Hydration & Barrier Repair', 'Brightening & Even Tone/Melasma Reduction'])
+            sleep_hours = st.slider("11. Average Nightly Sleep (Hours)", min_value=4.0, max_value=10.0, value=7.0, step=0.5)
+            budget = st.select_slider("12. Expected Monthly Budget (USD)", options=['$20 - $50 (Budget)', '$50 - $100 (Mid-Range)', '$100 - $200 (Premium)', '$200+ (Luxury)'])
             
             st.markdown("---")
             submitted = st.form_submit_button("✅ Finalize Personalized Profile")
 
     if submitted:
-        if not concerns or not goal:
-            st.error("Please ensure you've selected your Primary Concerns and Goal.")
+        if len(concerns) < 2 or not goal:
+            st.error("Please select at least 2 Primary Concerns and your Primary Skincare Goal.")
         else:
-            # HYPER-SCORE INITIAL CALCULATION LOGIC
-            base_score = 80 
-            # Penalties based on input
-            if 'Acne & Breakouts' in concerns or user_skin_type in ['Combination (Oily T-Zone)', 'Oily']: base_score -= 5
-            if 'Redness & Sensitivity' in concerns or sensitivity_level in ['Moderate', 'High']: base_score -= 7
-            if user_age >= 40 and 'Fine Lines & Wrinkles' in concerns: base_score -= 6
-            # Bonus
-            if history_products: base_score += 2 # Experienced user
+            # --- HYPER-SCORE INITIAL CALCULATION LOGIC (Complex Formula) ---
+            base_score = 95 
             
-            initial_score = max(55, min(90, base_score + random.randint(-4, 4)))
+            # 1. Age Penalty (More penalty for age > 40)
+            base_score -= (user_age / 10) * 0.5
             
-            # Dynamic Routine Suggestion (Saved as string)
-            routine_steps = {
-                'Morning': ['Cleanser (Gentle)', 'Vitamin C Serum', 'Hydrating SPF 50+'],
-                'Evening': ['Oil Cleanser', 'Water-Based Cleanser', 'Targeted Treatment (e.g., Retinol/AHA)', 'Moisturizer (Repair)']
-            }
-            default_routine_str = str(routine_steps)
+            # 2. Concern Penalty (Severe concerns drop score more)
+            if any('Melasma' in c or 'Wrinkles' in c for c in concerns): base_score -= 8
+            if any('Acne & Breakouts' in c for c in concerns): base_score -= 5
+            
+            # 3. Sensitivity & Fitzpatrick Penalty
+            if sensitivity_level in ['High/Reactive']: base_score -= 7
+            if user_ethnicity in ['Type IV', 'Type V', 'Type VI'] and 'Pigmentation' in concerns: base_score -= 4 # Higher risk for PIH
+            
+            # 4. Lifestyle Bonus/Penalty
+            if sleep_hours < 6.0: base_score -= 3
+            if history_products: base_score += 2 # Experienced user bonus
+            
+            initial_score = max(55, min(90, int(base_score + random.uniform(-3, 3))))
+            
+            # --- DYNAMIC ROUTINE GENERATION (Based on Input) ---
+            
+            # Morning Routine (Focus: Antioxidant + Protection)
+            am_steps = ['Cleanser (Low pH)']
+            if 'Pigmentation' in concerns or 'Brightening' in goal:
+                am_steps.append('Vitamin C Serum (L-Ascorbic)')
+            am_steps.append('Hydrating Moisturizer')
+            am_steps.append('Broad Spectrum SPF 50+')
 
+            # Evening Routine (Focus: Treatment + Repair)
+            pm_steps = ['Oil-Based Makeup Remover', 'Water-Based Cleanser']
+            if any('Acne' in c for c in concerns):
+                pm_steps.append('Targeted BHA or Azelaic Acid Treatment')
+            elif any('Wrinkles' in c or 'Firmness' in c for c in concerns) and history_products:
+                pm_steps.append('High-Potency Retinoid/Retinal')
+            else:
+                pm_steps.append('Hydrating/Peptide Serum')
+            pm_steps.append('Occlusive Repair Cream')
+
+            routine_steps_dict = {'Morning': am_steps, 'Evening': pm_steps}
+            
             update_dict = {
                 'Age': user_age,
                 'Location': user_location,
                 'Skin_Type': user_skin_type,
-                'Concerns': ", ".join(concerns),
+                'Concerns': concerns,
                 'Allergies': allergy,
                 'Sensitivity': sensitivity_level,
                 'Goal': goal,
                 'Budget': budget,
+                'Sleep_Hours': sleep_hours,
                 'Skin Score': initial_score,
-                'Routine': default_routine_str, # Detailed Routine saved as string
-                'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'Routine': routine_steps_dict, 
+                'Score_History': st.session_state.skin_score_history, # Use existing history, update last score
+                'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'Onboarding_Complete': True
             }
             
+            # Update the score history with the calculated initial score
+            update_dict['Score_History'][-1] = initial_score
+
             if save_user_data(st.session_state.user_email, update_dict):
                 st.session_state.onboarding_complete = True
                 st.session_state.skin_score = initial_score
-                
-                # Update history with new score
-                st.session_state.skin_score_history.append(initial_score)
-                st.session_state.skin_score_history = st.session_state.skin_score_history[-30:] # Keep last 30 days
-                
-                save_user_data(st.session_state.user_email, {
-                    'Score_History': str(st.session_state.skin_score_history)
-                })
-
                 st.success("✅ Hyper-Setup complete! Redirecting to Dashboard...")
                 navigate_to('Dashboard')
                 st.experimental_rerun()
             else:
-                st.error("Failed to save data. Please check connection.")
+                st.error("Failed to save data. User session error.")
 
 ### ---
 ## 3. Dashboard (Metric-Rich Hyper-View)
@@ -467,18 +447,18 @@ def dashboard_page():
     st.title("Dashboard: Hyper-Progress Overview 📊")
     st.markdown("---")
     
-    user_data = get_user_row(st.session_state.user_email)
+    user_data = st.session_state.user_data_profile
     today_key = get_today_key()
     
-    # Calculate Routine Progress %
-    routine_steps = parse_routine_progress(user_data.get('Routine'))
+    # Calculate Routine Progress % (Detailed AM/PM compliance)
+    routine_steps = user_data.get('Routine', {})
     total_steps = sum(len(steps) for steps in routine_steps.values())
     
-    # Calculate completed steps from today's progress log
-    completed_steps = len([s for s in st.session_state.daily_progress.get(today_key, []) if s])
-    
-    routine_completion_percent = int((completed_steps / total_steps) * 100) if total_steps > 0 else 0
+    # Get today's progress log
+    today_progress = st.session_state.daily_progress.get(today_key, {'AM': [], 'PM': []})
+    completed_steps = sum(v.count(True) for v in today_progress.values())
 
+    routine_completion_percent = int((completed_steps / total_steps) * 100) if total_steps > 0 else 0
 
     st.subheader(f"Welcome back, **{user_data.get('Name', 'User')}**!")
     
@@ -490,14 +470,14 @@ def dashboard_page():
         <div class="skinova-card" style="border-left: 6px solid #FFC300;">
             <p style='font-size: 16px; margin-bottom: 5px; font-weight: 600;'>Current Skin Score 🌟</p>
             <p class="score-display">{st.session_state.skin_score}</p>
-            <p style='font-size: 12px; font-style: italic;'>Target: 95. Change: {st.session_state.skin_score_history[-1] - st.session_state.skin_score_history[-2] if len(st.session_state.skin_score_history) > 1 else 0} pts (24h)</p>
+            <p style='font-size: 12px; font-style: italic;'>Recent 24h Change: {'+' if st.session_state.skin_score_history[-1] >= st.session_state.skin_score_history[-2] else ''}{st.session_state.skin_score_history[-1] - st.session_state.skin_score_history[-2] if len(st.session_state.skin_score_history) > 1 else 0} pts</p>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
         st.markdown(f"""
         <div class="skinova-card" style="border-left: 6px solid #4CAF50;">
-            <p style='font-size: 16px; margin-bottom: 5px; font-weight: 600;'>Routine Compliance (Daily) 🎯</p>
+            <p style='font-size: 16px; margin-bottom: 5px; font-weight: 600;'>Routine Compliance (Today) 🎯</p>
             <p class="score-display" style='color: #4CAF50;'>{routine_completion_percent}%</p>
             <p style='font-size: 12px; font-style: italic;'>Completed {completed_steps}/{total_steps} steps today.</p>
         </div>
@@ -509,34 +489,52 @@ def dashboard_page():
         <div class="skinova-card" style="border-left: 6px solid #FF4B4B;">
             <p style='font-size: 16px; margin-bottom: 5px; font-weight: 600;'>Current Streak 🔥</p>
             <p class="score-display" style='color: #FF4B4B;'>{st.session_state.routine_streak}</p>
-            <p style='font-size: 12px; font-style: italic;'>Keep going! Consistent care yields results.</p>
+            <p style='font-size: 12px; font-style: italic;'>Goal: Maintain 7-day minimum consistency.</p>
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("---")
     st.markdown("## 30-Day Skin Health Trend 📈")
     
-    # Matplotlib Graph (30-Day Hyper-Trend)
+    # Matplotlib Graph (30-Day Hyper-Trend with Projection)
     fig, ax = plt.subplots(figsize=(12, 5))
     
     scores = st.session_state.skin_score_history
     days = list(range(1, len(scores) + 1))
     
-    ax.plot(days, scores, marker='o', linestyle='-', color=SOFT_BLUE, linewidth=3, markersize=6, alpha=0.7)
+    # 1. Actual Historical Data
+    ax.plot(days, scores, marker='o', linestyle='-', color=SOFT_BLUE, linewidth=3, markersize=6, alpha=0.7, label='Actual Score')
     
+    # 2. Score Projection (Hyper-Detail)
+    if len(scores) >= 7:
+        # Simple linear projection based on the last 7 days' average change
+        recent_change = scores[-1] - scores[-7]
+        avg_daily_change = recent_change / 6
+        
+        projection_days = list(range(len(scores), len(scores) + 7))
+        projected_scores = [scores[-1] + (avg_daily_change * i) for i in range(1, 8)]
+        
+        ax.plot([days[-1]] + projection_days, [scores[-1]] + projected_scores, 
+                linestyle='--', color='grey', alpha=0.6, label='7-Day Projection')
+
     # Add target line
-    ax.axhline(90, color='grey', linestyle='--', alpha=0.5, label='Target Score (90)')
+    ax.axhline(90, color='red', linestyle=':', alpha=0.7, label='Target Score (90)')
     
-    ax.set_title('30-Day Skin Score Trend', fontsize=18, fontweight='bold', color=TEXT_COLOR)
-    ax.set_xlabel('Day', fontsize=14)
-    ax.set_ylabel('Skin Score', fontsize=14)
-    ax.set_ylim(min(scores) - 5, max(scores) + 5)
+    ax.set_title('30-Day Skin Score Trend & 7-Day Projection', fontsize=18, fontweight='bold', color=TEXT_COLOR)
+    ax.set_xlabel('Day (Last 30)', fontsize=14)
+    ax.set_ylabel('Skin Score (50-100)', fontsize=14)
+    ax.set_ylim(min(scores) - 5, max(scores) + 5 if max(scores) < 95 else 100)
     ax.grid(axis='y', linestyle=':', alpha=0.6)
+    ax.legend()
     
     st.pyplot(fig)
     
+    st.markdown("---")
     st.markdown("## Hyper-Insight: Your Profile Summary")
     with st.expander("Detailed Onboarding Data"):
-        st.json({k: v for k, v in user_data.items() if k not in ['Routine_Progress', 'Score_History', 'Email']})
+        # Display key profile data from the session state
+        display_data = {k: v for k, v in user_data.items() if k not in ['Routine_Progress', 'Score_History', 'Email', 'Last Login', 'Routine']}
+        st.json(display_data)
 
 
 ### ---
@@ -545,9 +543,9 @@ def skin_analyzer_page():
     st.title("Skin Analyzer: AI-Powered Deep Scan 🔬")
     st.markdown("---")
     
-    st.info("💡 **Hyper-Warning**: This simulation is for educational purposes. Always consult a dermatologist for real diagnosis.")
+    st.info("💡 **Hyper-Warning**: This is a simulated analysis based on visual data interpretation algorithms.")
     
-    uploaded_file = st.file_uploader("Upload a high-resolution, close-up image of your focus area.", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("Upload a high-resolution, close-up image of your focus area (e.g., cheek or T-zone).", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
@@ -561,11 +559,12 @@ def skin_analyzer_page():
             
         with col_proc:
             st.markdown("### Processing Image with SkinovaNet 2.0 🤖")
-            with st.spinner('Running multi-spectral analysis on 7 facial layers...'):
+            st.markdown("_Running 12-layer Convolutional Analysis to detect subtle skin conditions..._")
+            with st.spinner('Analyzing texture, color mapping, and subsurface artifacts...'):
                 import time
                 progress_bar = st.progress(0)
                 for i in range(100):
-                    time.sleep(0.03)
+                    time.sleep(0.02)
                     progress_bar.progress(i + 1)
             progress_bar.empty()
             st.success("✅ Analysis Complete! Generating Report.")
@@ -574,36 +573,45 @@ def skin_analyzer_page():
         
         # Hyper-Detailed Dummy AI Logic
         dummy_results = {
-            "Acne Index (P. Acnes Activity)": random.choice(["Low", "Mild", "Moderate", "High"]),
-            "Pigmentation Index (Melanin Density)": random.choice(["Low", "Mild", "Moderate", "High"]),
-            "Wrinkle Depth (Simulated)": random.choice(["Low", "Minimal", "Moderate", "Significant"]),
+            "Acne Index (P. Acnes Activity)": random.choice(["Low", "Mild (Localized)", "Moderate (Diffuse)", "High (Severe)"]),
+            "Pigmentation Index (Melanin Density)": random.choice(["Low", "Mild (Freckling)", "Moderate (Sun Damage)", "High (Melasma)"]),
+            "Wrinkle Depth (Simulated)": random.choice(["Low (Dynamic only)", "Minimal (Fine Lines)", "Moderate (Static lines)", "Significant (Deep creases)"]),
             "Pore Size & Clog Status": random.choice(["Tight & Clear", "Medium & Visible", "Enlarged & Clogged"]),
-            "Hydration Level (Simulated Trans-Epidermal Water Loss)": random.choice(["Optimal (Level 5)", "Good (Level 4)", "Fair (Level 3)", "Poor (Level 2)"]),
-            "Redness/Inflammation Index": random.choice(["Minimal", "Localized", "Diffuse"]),
+            "Hydration Level (TEWL Metric)": random.choice(["Optimal (Level 5)", "Good (Level 4)", "Fair (Level 3)", "Poor (Level 2)"]),
+            "Redness/Inflammation Index": random.choice(["Minimal", "Localized (Around acne)", "Diffuse (General sensitivity)"]),
+            "Collagen Density (Est.)": random.choice(["High", "Average", "Below Average", "Low"]),
         }
         
         # Determine the core issue for routine adjustment
-        core_issue = max(dummy_results, key=lambda k: ["Low", "Minimal", "Good", "Optimal", "Fair", "Diffuse", "Moderate", "High", "Significant"].index(dummy_results[k]))
+        # Find the metric with the "worst" rating (e.g., High, Severe, Poor)
+        rating_order = ["Low", "Minimal", "Optimal", "Good", "Average", "Tight", "Mild", "Medium", "Fair", "Localized", "Diffuse", "Below Average", "High", "Significant", "Severe", "Poor"]
+        core_issue = max(dummy_results, key=lambda k: rating_order.index(dummy_results[k].split('(')[0].strip()))
         
         routine_adjustment = ""
-        if "Acne" in core_issue and dummy_results[core_issue] in ["Moderate", "High"]:
-            routine_adjustment = "**Focus on BHA/Salicylic Acid and spot treatments.** Avoid heavy oils."
-            suggested_routine = "Add 2% Salicylic Acid serum (PM) and switch to a Gel Cleanser."
-        elif "Pigmentation" in core_issue and dummy_results[core_issue] in ["Moderate", "High"]:
-            routine_adjustment = "**Intensify sun protection and use Tyrosinase Inhibitors.** Use SPF 50+ re-applied."
-            suggested_routine = "Add 15% Vitamin C (AM) and use a high-strength Retinoid (PM)."
-        elif "Wrinkle" in core_issue and dummy_results[core_issue] in ["Moderate", "Significant"]:
-            routine_adjustment = "**Integrate high-grade Peptides and strong retinoids.** Focus on deep hydration."
-            suggested_routine = "Introduce a Peptide Serum (AM) and a Prescription-Strength Retinoid (PM, 3x/week)."
+        suggested_routine_change = ""
+
+        if "Acne Index" in core_issue and "Moderate" in dummy_results[core_issue]:
+            routine_adjustment = "**Immediate need for anti-bacterial and keratolytic agents.** Focus on gentle exfoliation."
+            suggested_routine_change = "Add 2% Salicylic Acid serum (PM, 3x/week) and switch to an Oil-Free Gel Cleanser."
+        elif "Pigmentation Index" in core_issue and "High" in dummy_results[core_issue]:
+            routine_adjustment = "**Critical need for UV blockage and Tyrosinase inhibitors.** Strict sun avoidance."
+            suggested_routine_change = "Increase Vitamin C concentration (AM) and introduce a non-Hydroquinone lightener (Azelaic Acid, PM)."
+        elif "Wrinkle Depth" in core_issue and "Significant" in dummy_results[core_issue]:
+            routine_adjustment = "**Focus on deep dermal stimulation and matrix repair.** Higher grade active needed."
+            suggested_routine_change = "Upgrade PM Retinoid to a higher-potency Retinaldehyde and add a Peptide-rich cream (AM)."
+        elif "Hydration Level" in core_issue and "Poor" in dummy_results[core_issue]:
+            routine_adjustment = "**Barrier function is compromised. Stop all harsh actives temporarily.** Focus on humectants and occlusives."
+            suggested_routine_change = "Switch to a non-foaming cream cleanser and introduce an overnight Ceramide/Cholesterol mask."
         else:
-            routine_adjustment = "Maintain current routine. Focus on hydration and prevention."
-            suggested_routine = "Your skin is balanced! Continue with your core routine."
+            routine_adjustment = "Maintain current routine. Focus on prevention and minor optimization."
+            suggested_routine_change = "Your skin is balanced! Continue with your core routine and reassess in 30 days."
 
         # Display results in a table-like structure
         st.subheader("Key Biometric Indicators:")
         res_cols = st.columns(3)
         for i, (key, value) in enumerate(dummy_results.items()):
-            color = "#4CAF50" if value.startswith(("Low", "Minimal", "Optimal", "Tight")) else ("#FFC300" if value.startswith(("Mild", "Medium", "Fair", "Localized")) else "#FF4B4B")
+            # Simple color logic based on the rating word
+            color = "#4CAF50" if value.startswith(("Low", "Minimal", "Optimal", "Good", "High")) else ("#FFC300" if value.startswith(("Mild", "Medium", "Average", "Fair", "Localized")) else "#FF4B4B")
             with res_cols[i % 3]:
                  st.markdown(f"""
                 <div class="skinova-card" style="padding: 15px; border-left: 5px solid {color};">
@@ -615,40 +623,36 @@ def skin_analyzer_page():
         st.markdown(f"""
             <div class="skinova-card" style="margin-top: 20px; background-color: {SOFT_BLUE}10;">
                 <h4 style='margin-top:0; color:{DARK_ACCENT}'>AI Hyper-Prescription Summary:</h4>
-                <p style='font-size: 18px; font-weight: 500;'>**Core Issue Identified:** {core_issue}</p>
+                <p style='font-size: 18px; font-weight: 500;'>**Core Issue Identified:** {core_issue} ({dummy_results[core_issue]})</p>
                 <p style='font-size: 16px;'>**Actionable Adjustment:** {routine_adjustment}</p>
-                <p style='font-size: 16px;'>**Suggested Routine Change:** *{suggested_routine}*</p>
+                <p style='font-size: 16px;'>**Suggested Routine Change:** *{suggested_routine_change}*</p>
             </div>
             """, unsafe_allow_html=True)
             
-        # Store results in a separate "Analyzer_Logs" sheet (Hyper-Extension)
-        try:
-            log_sheet: Worksheet = sh.worksheet("Analyzer_Logs")
-            new_log = [
-                st.session_state.user_email, 
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                dummy_results['Acne Index (P. Acnes Activity)'],
-                dummy_results['Pigmentation Index (Melanin Density)'],
-                dummy_results['Wrinkle Depth (Simulated)'],
-                suggested_routine
-            ]
-            log_sheet.append_row(new_log)
-        except Exception:
-            pass # Silent fail for dummy sheet
-            
         # Button to automatically update the routine
-        if st.button("Apply Suggested Routine Change", key='apply_routine'):
-            # Fetch current routine steps and modify
-            current_routine = parse_routine_progress(st.session_state.user_data_profile.get('Routine', '{}'))
-            # Simple modification logic for demonstration
-            if 'Salicylic Acid' in suggested_routine:
-                if 'Evening' in current_routine:
-                    current_routine['Evening'][2] = 'BHA/Salicylic Acid Treatment'
-                else:
-                    current_routine['Evening'] = ['Oil Cleanser', 'Water-Based Cleanser', 'BHA/Salicylic Acid Treatment', 'Moisturizer (Repair)']
+        if st.button("Apply Suggested Routine Change and Update Profile Score", key='apply_routine'):
             
-            save_user_data(st.session_state.user_email, {'Routine': str(current_routine)})
-            st.session_state.user_data_profile['Routine'] = str(current_routine) # Update session
+            # Complex modification logic: We assume the suggested change overrides the 'Treatment' step
+            current_routine = st.session_state.user_data_profile.get('Routine', {})
+            
+            # Update the appropriate step based on the suggestion
+            if 'BHA' in suggested_routine_change or 'Azelaic Acid' in suggested_routine_change:
+                current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'Retinoid' not in step and 'Treatment' not in step]
+                current_routine['Evening'].insert(2, 'New: BHA/Azelaic Acid Treatment')
+            elif 'Retinaldehyde' in suggested_routine_change or 'Peptide-rich' in suggested_routine_change:
+                 current_routine['Evening'] = [step for step in current_routine.get('Evening', []) if 'BHA' not in step and 'Treatment' not in step]
+                 current_routine['Evening'].insert(2, 'New: High-Potency Anti-Aging Treatment')
+            
+            # Score bonus for taking immediate action
+            new_score = st.session_state.skin_score + random.randint(1, 3) 
+            st.session_state.skin_score = max(50, min(99, new_score))
+            st.session_state.skin_score_history[-1] = st.session_state.skin_score # Update today's score
+
+            save_user_data(st.session_state.user_email, {
+                'Routine': current_routine,
+                'Skin Score': st.session_state.skin_score,
+                'Score_History': st.session_state.skin_score_history
+            })
             st.success("Routine successfully updated! Check 'My Routine' page.")
             navigate_to('My Routine')
             st.experimental_rerun()
@@ -660,42 +664,62 @@ def my_routine_page():
     st.title("My Daily Ritual Tracker ✅")
     st.markdown("---")
 
-    user_data = get_user_row(st.session_state.user_email)
+    user_data = st.session_state.user_data_profile
     
-    # Dynamic Routine Steps
-    routine_steps_dict = parse_routine_progress(user_data.get('Routine', '{}'))
-    if not routine_steps_dict:
-        st.warning("Your personalized routine is not set. Please complete Onboarding or run the Skin Analyzer.")
+    # Dynamic Routine Steps (A dictionary containing 'Morning' and 'Evening' lists)
+    routine_steps_dict = user_data.get('Routine', {})
+    if not routine_steps_dict or 'Onboarding_Complete' not in user_data:
+        st.warning("Your personalized routine is not set. Please complete Onboarding (page 2).")
         return
 
-    # Check for daily reset (if first login of the day or first visit to this page today)
     today_key = get_today_key()
+    
+    # Initialize today's progress if first time visiting today
     if today_key not in st.session_state.daily_progress:
-        st.session_state.daily_progress[today_key] = [False] * sum(len(steps) for steps in routine_steps_dict.values())
+        st.session_state.daily_progress[today_key] = {
+            'AM': [False] * len(routine_steps_dict.get('Morning', [])),
+            'PM': [False] * len(routine_steps_dict.get('Evening', []))
+        }
         
     
     # Save the progress for the current day
-    def update_progress():
+    def update_progress(time_of_day, index):
+        # Update the specific checkbox state
+        current_progress = st.session_state.daily_progress[today_key][time_of_day]
+        current_progress[index] = not current_progress[index] # Toggle logic is handled by Streamlit, but we ensure the state update is here.
+        st.session_state.daily_progress[today_key][time_of_day] = current_progress
+        
+        # Recalculate and update score immediately
+        recalculate_score_and_save()
+
+
+    def recalculate_score_and_save():
         # Step 1: Calculate Routine Compliance Score for today
-        total_steps = len(st.session_state.daily_progress.get(today_key, []))
-        completed_steps = st.session_state.daily_progress[today_key].count(True)
+        total_steps = sum(len(v) for v in routine_steps_dict.values())
+        
+        # Get latest progress from session state
+        latest_progress = st.session_state.daily_progress.get(today_key, {'AM': [], 'PM': []})
+        completed_steps = sum(v.count(True) for v in latest_progress.values())
         compliance_score = completed_steps / total_steps if total_steps > 0 else 0
         
-        # Step 2: Calculate Score Boost/Drop (Hyper-Logic)
+        # Step 2: Calculate Score Boost/Drop (Hyper-Logic - only updates if final step is checked)
         score_change = 0
-        if compliance_score == 1.0:
+        
+        if compliance_score > 0 and 'last_step_checked' not in st.session_state:
+            # Only calculate full compliance bonus once per day
+            st.session_state.last_step_checked = False
+            
+        if compliance_score == 1.0 and not st.session_state.get('daily_bonus_applied', False):
             score_change = 3
+            st.session_state.daily_bonus_applied = True # Prevent multiple score additions
             st.balloons()
-            st.success("✨ 100% Routine Compliance! +3 Score Boost!")
-        elif compliance_score >= 0.75:
+            st.toast("✨ 100% Routine Compliance! +3 Score Boost Applied!", icon='🏆')
+        elif compliance_score >= 0.75 and not st.session_state.get('daily_bonus_applied', False):
             score_change = 1
-            st.info("👍 Excellent Compliance! +1 Score Boost.")
-        elif compliance_score < 0.5 and completed_steps > 0:
-            score_change = 0
-        elif completed_steps == 0:
-            score_change = -2
-            st.warning("⚠️ No steps completed today. -2 Score Penalty.")
-
+            st.toast("👍 Excellent Compliance! +1 Score Boost.", icon='👍')
+        
+        # If score was already updated today, this prevents double dipping but updates the save structure
+        
         # Step 3: Update Skin Score and History
         new_score = st.session_state.skin_score + score_change
         st.session_state.skin_score = max(50, min(99, new_score)) 
@@ -703,16 +727,14 @@ def my_routine_page():
         # Update today's score in the history (which is the last element)
         if st.session_state.skin_score_history:
             st.session_state.skin_score_history[-1] = st.session_state.skin_score
-        else:
-            st.session_state.skin_score_history = [st.session_state.skin_score]
-
-        # Step 4: Save all complex data back to the sheet
+        
+        # Step 4: Save all complex data back to the internal DB
         save_user_data(st.session_state.user_email, {
-            'Routine_Progress': str(st.session_state.daily_progress), # Save detailed progress history
+            'Routine_Progress': st.session_state.daily_progress, # Save detailed progress history
             'Skin Score': st.session_state.skin_score,
-            'Score_History': str(st.session_state.skin_score_history)
+            'Score_History': st.session_state.skin_score_history
         })
-        st.success("Routine progress and Skin Score updated successfully!")
+        st.info(f"Progress Saved. Current Score: {st.session_state.skin_score}")
 
 
     st.markdown(f"""
@@ -722,31 +744,30 @@ def my_routine_page():
     </div>
     """, unsafe_allow_html=True)
     
-    # Use a persistent index counter to map check boxes to the daily_progress list
-    step_index = 0
-    
     col_m, col_e = st.columns(2)
 
     with col_m:
         st.subheader("☀️ Morning Routine (Protection Focus)")
         st.markdown("_Ensuring environmental defense and hydration._")
         for i, step in enumerate(routine_steps_dict.get('Morning', [])):
-            st.session_state.daily_progress[today_key][step_index] = st.checkbox(f"**Step {i+1}**: {step}", 
-                                                                                value=st.session_state.daily_progress[today_key][step_index],
-                                                                                key=f"m_step_{step_index}", on_change=update_progress)
-            step_index += 1
+            st.checkbox(f"**Step {i+1}**: {step}", 
+                        value=st.session_state.daily_progress[today_key]['AM'][i],
+                        key=f"m_step_{i}", 
+                        on_change=update_progress, 
+                        args=('AM', i))
 
     with col_e:
         st.subheader("🌙 Evening Routine (Treatment Focus)")
         st.markdown("_Targeting concerns and facilitating overnight repair._")
         for i, step in enumerate(routine_steps_dict.get('Evening', [])):
-            st.session_state.daily_progress[today_key][step_index] = st.checkbox(f"**Step {i+1}**: {step}", 
-                                                                                value=st.session_state.daily_progress[today_key][step_index],
-                                                                                key=f"e_step_{step_index}", on_change=update_progress)
-            step_index += 1
+            st.checkbox(f"**Step {i+1}**: {step}", 
+                        value=st.session_state.daily_progress[today_key]['PM'][i],
+                        key=f"e_step_{i}", 
+                        on_change=update_progress, 
+                        args=('PM', i))
 
     st.markdown("---")
-    st.info("Check a box to instantly save and update your progress and Skin Score.")
+    st.info("Check/Uncheck a box to instantly save and update your progress.")
 
 
 ### ---
@@ -755,37 +776,50 @@ def product_marketplace_page():
     st.title("Hyper-Marketplace: Curated Skincare Solutions 🛍️")
     st.markdown("---")
     
-    # Hyper-Extension: Expanded product list (15+ items)
+    # Hyper-Extension: Expanded product list (20+ items)
     products = [
-        {"Name": "Barrier Repair Cleanser", "Price": "$25", "Concern": "Dryness & Dehydration", "Link": "https://amzn.to/d1", "Type": "Cleanser", "Key_Ingredients": "Ceramides, Glycerin"},
-        {"Name": "BHA Pimple Serum", "Price": "$35", "Concern": "Acne & Breakouts", "Link": "https://nyka.com/d2", "Type": "Treatment", "Key_Ingredients": "Salicylic Acid, Niacinamide"},
-        {"Name": "Pro-Retinol 0.5% Cream", "Price": "$50", "Concern": "Fine Lines & Wrinkles", "Link": "https://amzn.to/d3", "Type": "Treatment", "Key_Ingredients": "Retinol, Peptides"},
-        {"Name": "Calm-Cica Gel", "Price": "$30", "Concern": "Redness & Sensitivity", "Link": "https://nyka.com/d4", "Type": "Moisturizer", "Key_Ingredients": "Centella Asiatica, Allantoin"},
-        {"Name": "Ascorbic Acid 15% Serum", "Price": "$45", "Concern": "Dark Spots/Pigmentation", "Link": "https://amzn.to/d5", "Type": "Serum", "Key_Ingredients": "Vitamin C, Ferulic Acid"},
-        {"Name": "Multi-Weight HA Booster", "Price": "$28", "Concern": "Dryness & Dehydration", "Link": "https://nyka.com/d6", "Type": "Serum", "Key_Ingredients": "Hyaluronic Acid, B5"},
-        {"Name": "A-Zinc Oil Control Serum", "Price": "$30", "Concern": "Acne & Breakouts", "Link": "https://amzn.to/d7", "Type": "Serum", "Key_Ingredients": "Niacinamide, Zinc PCA"},
-        {"Name": "Mineral Defense SPF 50", "Price": "$35", "Concern": "All", "Link": "https://nyka.com/d8", "Type": "Sunscreen", "Key_Ingredients": "Zinc Oxide, Titanium Dioxide"},
-        {"Name": "Hydro-Repair Eye Cream", "Price": "$40", "Concern": "Fine Lines & Wrinkles", "Link": "https://amzn.to/d9", "Type": "Eye Care", "Key_Ingredients": "Peptides, Caffeine"},
-        {"Name": "Deep Hydrating Toner", "Price": "$20", "Concern": "Dryness & Dehydration", "Link": "https://amzn.to/d10", "Type": "Toner", "Key_Ingredients": "Rose Water, Snail Mucin"},
+        {"Name": "Barrier Repair Cleanser", "Price": "$25", "Concern": "Dryness & Dehydration (Barrier)", "Link": "#", "Type": "Cleanser", "Key_Ingredients": "Ceramides, Glycerin, Cholesterol"},
+        {"Name": "BHA Pimple Serum (2%)", "Price": "$35", "Concern": "Acne & Breakouts (Fungal/Bacterial)", "Link": "#", "Type": "Treatment", "Key_Ingredients": "Salicylic Acid, Niacinamide, Green Tea"},
+        {"Name": "Pro-Retinol 0.5% Cream", "Price": "$50", "Concern": "Fine Lines & Wrinkles (Static)", "Link": "#", "Type": "Treatment", "Key_Ingredients": "Encapsulated Retinol, Peptides, Bisabolol"},
+        {"Name": "Calm-Cica Gel", "Price": "$30", "Concern": "Redness & Sensitivity (Rosacea)", "Link": "#", "Type": "Moisturizer", "Key_Ingredients": "Centella Asiatica, Allantoin, Panthenol"},
+        {"Name": "Ascorbic Acid 15% Serum", "Price": "$45", "Concern": "Dark Spots/Melasma/Pigmentation", "Link": "#", "Type": "Serum", "Key_Ingredients": "L-Ascorbic Acid, Ferulic Acid, Vitamin E"},
+        {"Name": "Multi-Weight HA Booster", "Price": "$28", "Concern": "Dryness & Dehydration (Barrier)", "Link": "#", "Type": "Serum", "Key_Ingredients": "Hyaluronic Acid (3 Weights), B5, Trehalose"},
+        {"Name": "A-Zinc Oil Control Serum", "Price": "$30", "Concern": "Oil Control/Excess Sebum", "Link": "#", "Type": "Serum", "Key_Ingredients": "Niacinamide (10%), Zinc PCA, Licorice Root"},
+        {"Name": "Mineral Defense SPF 50", "Price": "$35", "Concern": "All", "Link": "#", "Type": "Sunscreen", "Key_Ingredients": "Zinc Oxide, Titanium Dioxide, Iron Oxides"},
+        {"Name": "Hydro-Repair Eye Cream", "Price": "$40", "Concern": "Fine Lines & Wrinkles (Static)", "Link": "#", "Type": "Eye Care", "Key_Ingredients": "Argireline Peptide, Caffeine, Retinal"},
+        {"Name": "Deep Hydrating Toner", "Price": "$20", "Concern": "Dryness & Dehydration (Barrier)", "Link": "#", "Type": "Toner", "Key_Ingredients": "Rose Water, Snail Mucin, Galactomyces Ferment"},
+        {"Name": "Azelaic Acid Suspension", "Price": "$22", "Concern": "Acne & Breakouts (Hormonal)", "Link": "#", "Type": "Treatment", "Key_Ingredients": "Azelaic Acid (10%), Squalane"},
+        {"Name": "PM Occlusive Balm", "Price": "$38", "Concern": "Loss of Firmness/Elasticity", "Link": "#", "Type": "Moisturizer", "Key_Ingredients": "Petrolatum, Shea Butter, Peptides"},
+        {"Name": "Glycolic Acid Toning Pads", "Price": "$32", "Concern": "Loss of Firmness/Elasticity", "Link": "#", "Type": "Exfoliant", "Key_Ingredients": "Glycolic Acid (8%), Aloe Vera"}
     ]
     
-    concern_options = ["All", 'Acne & Breakouts', 'Dryness & Dehydration', 'Fine Lines & Wrinkles', 'Redness & Sensitivity', 'Dark Spots/Pigmentation']
-    type_options = ["All", "Cleanser", "Toner", "Serum", "Moisturizer", "Treatment", "Sunscreen", "Eye Care"]
+    concern_options = ["All", 'Acne & Breakouts (Hormonal)', 'Acne & Breakouts (Fungal/Bacterial)', 'Dryness & Dehydration (Barrier)', 'Redness & Sensitivity (Rosacea)', 'Dark Spots/Melasma/Pigmentation', 'Fine Lines & Wrinkles (Static)', 'Oil Control/Excess Sebum']
+    type_options = ["All", "Cleanser", "Toner", "Serum", "Moisturizer", "Treatment", "Sunscreen", "Eye Care", "Exfoliant"]
 
     # Filtering UI
-    filter_col1, filter_col2 = st.columns(2)
+    st.subheader("Filter Your Hyper-Search")
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
     with filter_col1:
         selected_concern = st.selectbox("Filter by Primary Concern", concern_options)
     with filter_col2:
         selected_type = st.selectbox("Filter by Product Type", type_options)
+    with filter_col3:
+        # Budget filter based on user's onboarded budget
+        user_budget_str = st.session_state.user_data_profile.get('Budget', '$50 - $100 (Mid-Range)')
+        st.markdown(f"**Your Budget Filter:** {user_budget_str.split('(')[0].strip()}")
+        price_limit = 50 if '$50' in user_budget_str else (100 if '$100' in user_budget_str else 200)
+
     
     filtered_products = products
     if selected_concern != "All":
-        filtered_products = [p for p in filtered_products if selected_concern == p["Concern"]]
+        filtered_products = [p for p in filtered_products if selected_concern in p["Concern"]]
     if selected_type != "All":
         filtered_products = [p for p in filtered_products if selected_type == p["Type"]]
-    
-    st.subheader(f"Showing {len(filtered_products)} Curated Products")
+        
+    # Apply Price Limit Filter (Hyper-Constraint)
+    filtered_products = [p for p in filtered_products if int(p["Price"].replace('$', '')) <= price_limit]
+
+    st.subheader(f"Showing {len(filtered_products)} Curated Products (Within Your ${price_limit} Budget)")
     
     # Display products in a 3-column grid
     num_cols = 3
@@ -797,19 +831,20 @@ def product_marketplace_page():
                 product = filtered_products[i + j]
                 with cols[j]:
                     st.markdown(f"""
-                    <div class="skinova-card" style="min-height: 300px; border-left: 6px solid {DARK_ACCENT};">
+                    <div class="skinova-card" style="min-height: 320px; border-left: 6px solid {DARK_ACCENT};">
                         <h4 style='color:{SOFT_BLUE}; margin-top:0;'>{product['Name']}</h4>
                         <p style='color: #4CAF50; font-weight: bold; font-size: 22px;'>{product['Price']}</p>
                         <p><strong>Type:</strong> {product['Type']}</p>
-                        <p><strong>Target:</strong> {product['Concern']}</p>
-                        <p style='font-size: 14px;'><strong>Key Ingredients:</strong> {product['Key_Ingredients']}</p>
+                        <p><strong>Target:</strong> {product['Concern'].split('(')[0].strip()}</p>
+                        <p style='font-size: 14px;'>**Key Ingredients:** {product['Key_Ingredients']}</p>
                         <a href="{product['Link']}" target="_blank">
                             <button style="background-color: #FFC300; color: {TEXT_COLOR}; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-                                View & Buy (Affiliate)
+                                View & Buy (Affiliate Link)
                             </button>
                         </a>
                     </div>
                     """, unsafe_allow_html=True)
+
 
 ### ---
 ## 7. Personalized Kit (Complex Logic)
@@ -817,67 +852,71 @@ def personalized_kit_page():
     st.title("The Ultimate Personalized Skincare Kit 🎁")
     st.markdown("---")
 
-    user_data = get_user_row(st.session_state.user_email)
-    concerns = [c.strip() for c in user_data.get('Concerns', '').split(',') if c.strip()]
+    user_data = st.session_state.user_data_profile
+    concerns = user_data.get('Concerns', [])
     sensitivity = user_data.get('Sensitivity', 'Mild')
     skin_type = user_data.get('Skin_Type', 'Combination')
     score = st.session_state.skin_score
+    goal = user_data.get('Goal', '')
     
     if not concerns:
         st.warning("Please complete onboarding to generate your hyper-kit.")
         return
 
-    st.subheader(f"Analyzing {skin_type} skin with concerns: **{', '.join(concerns)}**")
+    st.subheader(f"Analyzing {skin_type} skin (Score: {score}) with goal: **{goal}**")
     
-    # HYPER-KIT GENERATION LOGIC
+    # HYPER-KIT GENERATION LOGIC (More conditional complexity)
     kit = {}
 
-    # 1. Cleanser (Based on Skin Type/Sensitivity)
-    if 'Oily' in skin_type or 'Acne & Breakouts' in concerns:
-        kit['Cleanser'] = ('Gel-to-Foam Clarifying Cleanser', 'Salicylic Acid, Willow Bark')
-    elif 'Dry' in skin_type or sensitivity == 'High':
-        kit['Cleanser'] = ('Creamy Hydrating Cleansing Balm', 'Ceramides, Oat Extract')
+    # 1. Cleanser (Conditioned by Skin Type/Acne/Sensitivity)
+    if 'Oily' in skin_type or any('Acne' in c for c in concerns):
+        kit['Cleanser'] = ('Gel-to-Foam Clarifying Cleanser', 'Salicylic Acid, Willow Bark', 'Targets oil and congestion.')
+    elif 'Dry' in skin_type or sensitivity == 'High/Reactive':
+        kit['Cleanser'] = ('Creamy Hydrating Cleansing Balm', 'Ceramides, Oat Extract', 'Soothes and protects barrier.')
     else:
-        kit['Cleanser'] = ('Gentle pH-Balanced Cleanser', 'Glycerin, Niacinamide')
+        kit['Cleanser'] = ('Gentle pH-Balanced Cleanser', 'Glycerin, Niacinamide', 'Maintains skin harmony.')
 
-    # 2. AM Serum (Based on Primary Goal/Concern)
-    if 'Brightening' in user_data.get('Goal', '') or 'Pigmentation' in concerns:
-        kit['AM_Serum'] = ('15% L-Ascorbic Acid Serum', 'Vitamin C, Ferulic Acid')
-    elif 'Anti-Aging' in user_data.get('Goal', ''):
-        kit['AM_Serum'] = ('Peptide & Growth Factor Serum', 'Copper Peptides, Hyaluronic Acid')
+    # 2. AM Serum (Conditioned by Pigmentation/Anti-Aging)
+    if 'Brightening' in goal or any('Pigmentation' in c for c in concerns):
+        kit['AM_Serum'] = ('15% L-Ascorbic Acid Serum', 'Vitamin C, Ferulic Acid', 'Provides strong antioxidant and brightening defense.')
+    elif 'Anti-Aging' in goal or score < 80:
+        kit['AM_Serum'] = ('Peptide & Copper Complex Serum', 'Copper Peptides, Hyaluronic Acid', 'Supports firmness and hydration.')
     else:
-        kit['AM_Serum'] = ('Niacinamide 10% Barrier Serum', 'Niacinamide, Zinc PCA')
+        kit['AM_Serum'] = ('Niacinamide 10% Barrier Serum', 'Niacinamide, Zinc PCA', 'Minimizes pores and controls redness.')
 
-    # 3. Moisturizer (Based on Skin Type)
-    if 'Oily' in skin_type or 'Combination' in skin_type:
-        kit['Moisturizer'] = ('Oil-Free Water Gel Moisturizer', 'Hyaluronic Acid, Amino Acids')
+    # 3. Moisturizer (Conditioned by Skin Type and Hydration score)
+    hydration_score = score # Using skin score as proxy for hydration
+    if 'Oily' in skin_type or hydration_score > 90:
+        kit['Moisturizer'] = ('Oil-Free Water Gel Moisturizer', 'Hyaluronic Acid, Amino Acids', 'Lightweight, non-comedogenic hydration.')
     else:
-        kit['Moisturizer'] = ('Ceramide-Rich Repair Cream', 'Ceramides, Squalane')
+        kit['Moisturizer'] = ('Ceramide-Rich Repair Cream', 'Ceramides, Squalane, Cholesterol', 'Deep repair and moisture seal.')
 
     # 4. Sun Protection (Mandatory & Enhanced)
-    kit['Sunscreen'] = ('Broad Spectrum Mineral SPF 50+', 'Zinc Oxide, Tinted Formula')
+    kit['Sunscreen'] = ('Broad Spectrum Mineral SPF 50+', 'Zinc Oxide, Titanium Dioxide, Iron Oxides', 'Essential daily defense against UV and Blue Light.')
 
-    # 5. PM Treatment (The 'Heavy Lifter' - Based on Score/Concern)
-    if 'Acne & Breakouts' in concerns and score < 75:
-        kit['PM_Treatment'] = ('Benzoyl Peroxide Spot Treatment', 'Benzoyl Peroxide 5%')
-    elif 'Wrinkles' in concerns or 'Anti-Aging' in user_data.get('Goal', ''):
-        kit['PM_Treatment'] = ('Time-Release Retinaldehyde Cream', 'Retinaldehyde, Bakuchiol')
+    # 5. PM Treatment (The 'Heavy Lifter' - Most Conditional Step)
+    if any('Acne' in c for c in concerns) and score < 70:
+        kit['PM_Treatment'] = ('Benzoyl Peroxide Spot Treatment', 'Benzoyl Peroxide 5%', 'Aggressively targets inflammatory acne.')
+    elif 'Wrinkles' in concerns or 'Anti-Aging' in goal:
+        kit['PM_Treatment'] = ('Time-Release Retinaldehyde Cream', 'Retinaldehyde, Bakuchiol', 'Powerful anti-aging with minimized irritation.')
+    elif 'Sensitivity' in concerns or sensitivity == 'High/Reactive':
+        kit['PM_Treatment'] = ('Kojic Acid & Arbutin Mask (Weekly)', 'Alpha-Arbutin, Kojic Acid', 'Gentle brightening and barrier boost.')
     else:
-        kit['PM_Treatment'] = ('AHA/BHA Gentle Exfoliating Toner', 'Lactic Acid, Glycolic Acid')
+        kit['PM_Treatment'] = ('PHA/BHA Gentle Exfoliator', 'PHA, Lactic Acid', 'Mild nightly resurfacing.')
         
-    st.markdown("Based on your **concerns**, **skin type**, and **score**, here is your 5-step optimized kit:")
+    st.markdown("Based on your **profile**, **score**, and **goals**, here is your 5-step optimized kit:")
     
     kit_cols = st.columns(3)
     
     items = list(kit.items())
-    for i, (key, (product_name, ingredients)) in enumerate(items):
+    for i, (key, (product_name, ingredients, rationale)) in enumerate(items):
         with kit_cols[i % 3]:
             st.markdown(f"""
-            <div class="skinova-card" style="min-height: 200px; background-color: {LIGHT_BG};">
+            <div class="skinova-card" style="min-height: 250px; background-color: {LIGHT_BG};">
                 <h5 style='color:{SOFT_BLUE}; margin-bottom: 5px;'>{key.replace('_', ' ').upper()}</h5>
                 <p style='font-weight: bold; font-size: 18px;'>{product_name}</p>
                 <p style='font-size: 14px;'>**Key Ingredients:** {ingredients}</p>
-                <p style='font-size: 12px; font-style: italic;'>*Hyper-Rationale: {key.split('_')[0]} product selection.*</p>
+                <p style='font-size: 12px; font-style: italic; color: #777;'>**Rationale:** {rationale}</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -885,11 +924,12 @@ def personalized_kit_page():
     
     # Buy Now Section
     st.subheader("Ready to Check Out?")
-    affiliate_link = "https://affiliate.link/skinovakit-hyper-bundle-v2" # Dummy Link
+    st.markdown("This hyper-kit is valued at **$220 USD**. Get a bundle discount today.")
+    affiliate_link = "#" # Dummy Link
     st.markdown(f"""
         <a href="{affiliate_link}" target="_blank">
             <button style="background-color: #FF4B4B; color: white; padding: 15px 30px; border: none; border-radius: 10px; cursor: pointer; font-size: 20px; font-weight: bold; margin-top: 10px;">
-                🛒 Secure Your 5-Piece Hyper-Kit Now!
+                🛒 Secure Your 5-Piece Hyper-Kit Now for $199!
             </button>
         </a>
     """, unsafe_allow_html=True)
@@ -911,45 +951,37 @@ def skincare_academy_page():
         with col_v1:
             st.subheader("1. Decoding TEWL (Water Loss)")
             st.components.v1.iframe("https://www.youtube.com/embed/g8l9_F-x_Yw", height=250)
-            st.markdown("Understand Trans-Epidermal Water Loss and how to combat it with occlusives.")
+            st.markdown("Understand Trans-Epidermal Water Loss and how to combat it with occlusives and humectants.")
             
         with col_v2:
             st.subheader("2. Barrier Function & Ceramides")
             st.components.v1.iframe("https://www.youtube.com/embed/q4X0Qo-D5Yk", height=250)
-            st.markdown("The science of skin barrier repair and the essential role of Ceramides.")
+            st.markdown("The science of skin barrier repair and the essential role of Ceramides and Essential Fatty Acids.")
 
-        st.subheader("3. Sunscreen Filters: Chemical vs. Physical")
+        st.subheader("3. P. Acnes, Sebum, and Inflammation")
         st.components.v1.iframe("https://www.youtube.com/embed/4y8w0fD8lIw", height=250)
-        st.markdown("Which filter is right for your skin type and sun exposure level?")
+        st.markdown("A deep dive into the complex pathogenesis of acne vulgaris and modern treatment modalities (BHA, BP, Azelaic Acid).")
 
     with tab_art:
-        st.header("Advanced Skincare Articles")
+        st.header("Advanced Skincare Articles (Hyper-Content)")
         st.markdown("---")
-        st.subheader("Article 1: Micro-Dosing Retinoids for Sensitive Skin")
+        st.subheader("Article 1: The 'Sandwich Method' for Retinoid Introduction")
         st.markdown("""
-        Micro-dosing involves using small amounts of retinoids multiple times a week instead of a high concentration daily. 
-        **Why it works:** It allows the skin to acclimatize to the ingredient with minimal irritation, maximizing long-term benefits 
-        such as collagen production and cell turnover without the common "retinoid uglies" (flaking, redness).
+        **Technique:** Apply a thin layer of moisturizing cream, then the retinoid, and finish with another layer of moisturizer. 
+        **Rationale:** This buffers the retinoid, allowing for controlled, slow-release absorption, dramatically reducing the common side effects 
+        of redness, peeling, and irritation, making the ingredient accessible even for sensitive skin types.
         """)
         st.markdown("---")
-        st.subheader("Article 2: Glycation and Anti-Aging (A.G.E.s)")
+        st.subheader("Article 2: Niacinamide: Beyond Pore Size Reduction")
         st.markdown("""
-        Advanced Glycation End products (A.G.E.s) are formed when sugar molecules bond with proteins (like collagen and elastin) 
-        in the skin, causing them to stiffen and lose elasticity. This process is a major contributor to intrinsic aging. 
-        **How to fight it:** While difficult to reverse, topical antioxidants and lifestyle adjustments (like diet control) can mitigate the damage.
+        While known for its oil-regulating properties, Niacinamide's true hyper-power lies in its ability to **increase ceramide synthesis**
+        in the stratum corneum, effectively fortifying the skin's defense against pollutants and transepidermal water loss. This makes it a multi-functional hero for almost all skin conditions.
         """)
         st.markdown("---")
-        st.subheader("Article 3: Niacinamide: The Holy Grail for Combination Skin")
+        st.subheader("Article 3: The Importance of Post-Cleansing pH")
         st.markdown("""
-        Niacinamide (Vitamin B3) is a versatile powerhouse. It helps reduce pore size, strengthens the skin barrier, 
-        improves redness, and regulates oil production. Its ability to manage both oil control (T-zone) and barrier function (dry areas) 
-        makes it the perfect ingredient for complex combination skin types.
-        """)
-        st.markdown("---")
-        st.subheader("Article 4: Hydroquinone Alternatives for Stubborn Melasma")
-        st.markdown("""
-        While Hydroquinone remains the gold standard, alternatives like **Kojic Acid, Azelaic Acid, and Cysteamine** are highly effective. 
-        These work by inhibiting the Tyrosinase enzyme, which is crucial for melanin production, offering powerful pigment control without the associated risks of long-term Hydroquinone use.
+        The skin's natural pH is slightly acidic (around 5.5). Using highly alkaline cleansers (pH 8+) can disrupt the **acid mantle**, 
+        leading to increased vulnerability to bacteria (like P. acnes) and environmental damage. Always choose a cleanser marketed as pH-balanced or low-pH.
         """)
 
     with tab_quiz:
@@ -957,11 +989,11 @@ def skincare_academy_page():
         st.markdown("Answer correctly to receive a **+5 Skin Score bonus**!")
         
         quiz_questions = [
-            ("The 'gold standard' ingredient for stimulating collagen and increasing cell turnover is:", ["Vitamin C", "Hyaluronic Acid", "Retinoids", "Glycerin"], "Retinoids"),
-            ("What is the primary function of a **humectant**?", ["Exfoliation", "Moisture Attraction", "Oil Sealing", "UV Absorption"], "Moisture Attraction"),
-            ("What does TEWL stand for?", ["T-Zone Water Loss", "Total Exfoliation Width", "Trans-Epidermal Water Loss", "Toxin Elimination Waste Loop"], "Trans-Epidermal Water Loss"),
-            ("Which ingredient is best for soothing redness and sensitive skin?", ["Glycolic Acid", "Benzoyl Peroxide", "Centella Asiatica (Cica)", "Denatured Alcohol"], "Centella Asiatica (Cica)"),
-            ("Which type of sunscreen filter works by absorbing UV radiation and converting it into heat?", ["Physical/Mineral", "Chemical/Organic"], "Chemical/Organic")
+            ("Which ingredient is a humectant and can hold up to 1000 times its weight in water?", ["Ceramides", "Hyaluronic Acid", "Retinoids", "Lactic Acid"], "Hyaluronic Acid"),
+            ("The skin's lipid barrier is primarily composed of:", ["Water, Salt, and Sugar", "Ceramides, Cholesterol, and Fatty Acids", "AHA, BHA, and PHA", "Melanin, Keratin, and Water"], "Ceramides, Cholesterol, and Fatty Acids"),
+            ("Which type of acid is oil-soluble and penetrates pores to dissolve sebum and dead skin?", ["Glycolic Acid (AHA)", "Salicylic Acid (BHA)", "Lactic Acid (AHA)"], "Salicylic Acid (BHA)"),
+            ("What is the maximum effective concentration of Niacinamide often recommended to avoid irritation?", ["25%", "5%", "15%", "1%"], "5%"),
+            ("Which UV ray is responsible for premature aging and penetrates deeper into the dermis?", ["UVB", "UVA"], "UVA")
         ]
         
         # State to store answers and score
@@ -972,7 +1004,7 @@ def skincare_academy_page():
         with st.form("master_quiz_form"):
             user_answers = {}
             for i, (q, options, _) in enumerate(quiz_questions):
-                user_answers[f'q{i+1}'] = st.radio(f"{i+1}. {q}", options, key=f"quiz_q{i+1}")
+                user_answers[f'q{i+1}'] = st.radio(f"**{i+1}.** {q}", options, key=f"quiz_q{i+1}")
             
             quiz_submitted = st.form_submit_button("Submit Master Quiz")
             
@@ -990,29 +1022,31 @@ def skincare_academy_page():
                 # Feedback and Score Update
                 st.subheader(f"Quiz Results: {final_score}/{len(quiz_questions)}")
                 if final_score == len(quiz_questions):
-                    if final_score is not None and final_score == len(quiz_questions):
+                    if not st.session_state.user_data_profile.get('Quiz_Certified', False):
                         st.balloons()
                         st.success("🏆 Perfect Score! You're a Skinova Certified Expert! +5 Skin Score awarded.")
                         
                         # Update Score Logic
                         st.session_state.skin_score = min(99, st.session_state.skin_score + 5)
-                        st.session_state.skin_score_history[-1] = st.session_state.skin_score
+                        st.session_state.skin_score_history[-1] = st.session_state.skin_score # Update today's score
+                        
                         save_user_data(st.session_state.user_email, {
                             'Skin Score': st.session_state.skin_score,
-                            'Score_History': str(st.session_state.skin_score_history)
+                            'Score_History': st.session_state.skin_score_history,
+                            'Quiz_Certified': True # Set flag to prevent future bonuses
                         })
                     else:
-                         st.info("Great job! Review the questions you missed for full certification.")
+                         st.info("You already earned the +5 bonus. Great review!")
                 else:
-                    st.error("Needs Improvement. Try again after reviewing the academy.")
+                    st.error(f"Needs Improvement. Score: {final_score}. Review the academy and try again!")
                 
-                # Show Feedback
+                # Show Detailed Feedback
                 for i, (q, _, correct_answer) in enumerate(quiz_questions):
                     q_key = f'q{i+1}'
                     user_ans = st.session_state.quiz_answers.get(q_key)
                     is_correct = user_ans == correct_answer
                     feedback_icon = "✅" if is_correct else "❌"
-                    st.markdown(f"**{feedback_icon} Q{i+1}:** {q} (Your Answer: {user_ans}. Correct: **{correct_answer}**)")
+                    st.markdown(f"**{feedback_icon} Q{i+1}:** {q} | *Your Answer:* **{user_ans}** | *Correct:* **{correct_answer}**")
 
 
 ### ---
@@ -1023,19 +1057,10 @@ def community_forum_page():
     
     st.subheader("Post a Question for Peer Review")
     
-    try:
-        forum_sheet: Worksheet = sh.worksheet("Forum_Posts")
-        forum_sheet.get_all_records() # Check if it works
-    except Exception:
-        st.warning("Forum sheet not accessible. Posts will be saved temporarily in session only.")
-        forum_sheet = None
-        if 'temp_forum' not in st.session_state:
-            st.session_state.temp_forum = []
-
-
     with st.form("post_question_form"):
-        post_title = st.text_input("Title of your question (e.g., Retinol Purge?)", max_chars=100)
-        post_content = st.text_area("Your full question/concern (Max 500 chars)", height=150, max_chars=500)
+        # Use unique keys to avoid conflict
+        post_title = st.text_input("Title of your question (e.g., Retinol Purge - Day 5?)", max_chars=100, key="forum_title_input")
+        post_content = st.text_area("Your full question/concern (Max 500 chars)", height=150, max_chars=500, key="forum_content_input")
         post_submitted = st.form_submit_button("Submit Question to Forum")
         
         if post_submitted:
@@ -1046,44 +1071,33 @@ def community_forum_page():
                     'User_Email': st.session_state.user_email,
                     'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'Post_Title': post_title,
-                    'Post_Content': post_content
+                    'Post_Content': post_content,
+                    'Post_ID': random.getrandbits(32) # Simple unique ID
                 }
                 
-                if forum_sheet:
-                    forum_sheet.append_row(list(new_post.values()))
-                    st.success("✅ Your question has been posted to the live sheet!")
-                else:
-                    st.session_state.temp_forum.append(new_post)
-                    st.success("✅ Your question has been saved locally (Sheet not connected).")
+                st.session_state.forum_posts.append(new_post)
+                st.session_state.forum_posts.sort(key=lambda x: x['Timestamp'], reverse=True)
+                st.success("✅ Your question has been posted to the hyper-forum!")
                 
                 # Clear form inputs after successful submission
-                st.session_state["post_title_key"] = ""
-                st.session_state["post_content_key"] = ""
+                st.session_state["forum_title_input"] = ""
+                st.session_state["forum_content_input"] = ""
                 st.experimental_rerun()
                 
     st.markdown("---")
     
     st.subheader("🔥 Latest Community Questions")
 
-    forum_data = pd.DataFrame()
-    if forum_sheet:
-        try:
-            forum_data = pd.DataFrame(forum_sheet.get_all_records())
-        except Exception:
-            st.error("Error loading forum data from sheet.")
-            
-    if not forum_data.empty:
-        # Combine sheet data with session data for the user
-        if forum_sheet is None and st.session_state.temp_forum:
-             forum_data = pd.concat([forum_data, pd.DataFrame(st.session_state.temp_forum)])
-
-        recent_posts = forum_data.sort_values(by='Timestamp', ascending=False).head(8)
+    if st.session_state.forum_posts:
+        recent_posts = st.session_state.forum_posts[:8] # Show top 8 recent posts
         
-        for index, row in recent_posts.iterrows():
-            with st.expander(f"**{row['Post_Title']}** - *Posted by {row['User_Email']} on {row['Timestamp'][:10]}*"):
-                st.markdown(row['Post_Content'])
+        for post in recent_posts:
+            # Use user_email or first part of email for display
+            display_user = post['User_Email'].split('@')[0]
+            with st.expander(f"**{post['Post_Title']}** - *Posted by {display_user} on {post['Timestamp'][:10]}*"):
+                st.markdown(f"**Concern:** {post['Post_Content']}")
                 st.markdown("---")
-                st.markdown(f"_Dummy Replies: 3, Last Activity: Just Now_")
+                st.markdown(f"_Hyper-Simulation: Dummy Replies: {random.randint(2, 7)}, Last Activity: {random.choice(['Just Now', '1 hour ago', '4 hours ago'])}_")
     else:
         st.info("No questions posted yet. Be the first to start the conversation!")
 
@@ -1097,21 +1111,23 @@ def consult_expert_page():
     st.subheader("Book Your Virtual 1-on-1 Session")
     st.markdown("Provide detailed information below for our experts to prepare a hyper-personalized plan before your call.")
 
-    try:
-        consult_sheet: Worksheet = sh.worksheet("Expert_Consults")
-    except Exception:
-        consult_sheet = None
-
-    user_data = get_user_row(st.session_state.user_email)
+    user_data = st.session_state.user_data_profile
 
     with st.form("consult_form"):
         st.markdown("### Your Details")
         con_name = st.text_input("Your Full Name", value=user_data.get('Name', ''), disabled=True)
         con_email = st.text_input("Your Email", value=user_data.get('Email', ''), disabled=True)
         
-        st.markdown("### Consultation Focus")
-        concern_type = st.selectbox("Type of Consultation", ['Routine Review & Optimization', 'Acne Management', 'Anti-Aging Strategies', 'Product Allergy Check'])
-        con_concern = st.text_area("Describe your concern/question in detail", height=200)
+        st.markdown("### Consultation Focus (Hyper-Intake)")
+        
+        col_type, col_time = st.columns(2)
+        with col_type:
+            concern_type = st.selectbox("Type of Consultation", ['Routine Review & Optimization (30 min)', 'Advanced Acne Management (45 min)', 'Deep Anti-Aging Strategies (60 min)', 'Product Allergy & Patch Test Guidance (30 min)'])
+        with col_time:
+            preferred_slot = st.selectbox("Preferred Time Slot (Simulated Availability)", 
+                                          [f"Tomorrow, {t}:00 PM" for t in [10, 11, 2, 3, 5]])
+
+        con_concern = st.text_area("Describe your concern/question in detail (Max 800 chars)", height=200, max_chars=800)
         
         st.markdown("### Optional: Provide Visual Context")
         uploaded_image = st.file_uploader("Upload a high-res image of the area (Optional)", type=["jpg", "jpeg", "png"])
@@ -1121,30 +1137,31 @@ def consult_expert_page():
         if consult_submitted:
             if not con_concern:
                 st.warning("Please describe your concern.")
-            elif consult_sheet:
-                # Log image upload status, as we can't save the image data to the sheet
+            else:
                 image_status = "Image attached" if uploaded_image else "No image attached"
                 
-                new_consult = [
-                    con_name,
-                    con_email,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    concern_type,
-                    con_concern,
-                    image_status
-                ]
-                consult_sheet.append_row(new_consult)
+                new_consult = {
+                    'Name': con_name,
+                    'Email': con_email,
+                    'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'Consult_Type': concern_type,
+                    'Concern_Detail': con_concern,
+                    'Image_Status': image_status,
+                    'Preferred_Slot': preferred_slot,
+                    'Status': 'Pending Review'
+                }
+                
+                st.session_state.consult_requests.append(new_consult)
                 
                 st.success("✅ Your consultation request has been submitted!")
                 st.markdown(f"""
                 <div class="skinova-card" style="background-color: #4CAF5010; border-left: 5px solid #4CAF50;">
-                    <p style='font-weight: bold;'>Confirmation:</p>
-                    <p>Our expert team has received your request regarding **{concern_type}**.</p>
-                    <p>They will contact you within **24 hours** to schedule a video call and share your preliminary analysis.</p>
+                    <p style='font-weight: bold;'>Confirmation & Next Steps:</p>
+                    <p>Our expert team has received your request regarding **{concern_type.split('(')[0].strip()}**.</p>
+                    <p>We will confirm your **{preferred_slot}** slot and send a secure video link via email within 4 hours.</p>
+                    <p style='font-style: italic;'>Current number of requests in queue: {len(st.session_state.consult_requests)}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            else:
-                st.error("Failed to save consultation request. Google Sheet not connected.")
 
 
 # --- 7. MAIN APP ROUTER ---
@@ -1153,15 +1170,16 @@ def consult_expert_page():
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align: center; padding: 20px 0;">
-        <h2 style="color: white; margin: 0;">SKINOVAAI</h2>
-        <p style="color: #FFFFFF90; font-size: 14px;">HYPER-PERSONALIZED CARE</p>
+        <h2 style="color: white; margin: 0;">SKINOVAAI (V2)</h2>
+        <p style="color: #FFFFFF90; font-size: 14px;">SESSION-BASED HYPER-PLATFORM</p>
+        <p style="color: #FFD700; font-size: 12px; font-weight: bold;">(Data is saved only during this session)</p>
     </div>
     <hr style="border-top: 1px solid #FFFFFF50;"/>
     """, unsafe_allow_html=True)
 
     if st.session_state.logged_in:
-        st.markdown(f"**Current User:** {st.session_state.user_email}", unsafe_allow_html=True)
-        st.markdown(f"**Score:** {st.session_state.skin_score} | **Streak:** {st.session_state.routine_streak} 🔥", unsafe_allow_html=True)
+        st.markdown(f"**Current User:** {st.session_state.user_email.split('@')[0]}", unsafe_allow_html=True)
+        st.markdown(f"**Score:** {st.session_state.skin_score} | **Streak:** {st.session_state.routine_streak} days 🔥", unsafe_allow_html=True)
         st.markdown("---")
         
         pages = {
@@ -1189,7 +1207,7 @@ with st.sidebar:
         navigate_to(selected_page)
         
         st.markdown("---")
-        if st.button("🚪 Logout", help="Log out of the application"):
+        if st.button("🚪 Logout & Reset Session", help="Log out of the application"):
             logout()
             
     else:
@@ -1198,7 +1216,7 @@ with st.sidebar:
             navigate_to('Login/Signup')
 
 
-# Main Content Display
+# Main Content Display (Router Logic)
 if st.session_state.logged_in:
     if not st.session_state.onboarding_complete and st.session_state.current_page != 'Onboarding':
         onboarding_page() # Force redirect to onboarding
