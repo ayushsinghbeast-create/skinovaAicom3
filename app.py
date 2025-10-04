@@ -386,7 +386,6 @@ def onboarding_page():
             user_age = st.slider("1. Age", min_value=12, max_value=80, value=25)
             user_gender = st.selectbox("2. Biological Gender", ['Female', 'Male', 'Non-Binary', 'Prefer not to say'])
             user_location = st.selectbox("3. Current Climate/Location Type", 
-                                          ['Tropical/Humid', 'Arid/Dry Desert', 'Temperate/Seasonal', 'Cold/Northern', 'Urban/Polluted'])
             user_skin_type = st.radio("4. Self-Assessed Skin Type", ['Very Dry', 'Dry/Normal', 'Combination (Oily T-Zone)', 'Oily'])
         
         with tab2:
@@ -418,7 +417,6 @@ def onboarding_page():
             if 'Redness & Sensitivity' in concerns or sensitivity_level in ['Moderate', 'High']: base_score -= 7
             if user_age >= 40 and 'Fine Lines & Wrinkles' in concerns: base_score -= 6
             # Bonus
-            if history_products: base_score += 2 # Experienced user
             
             initial_score = max(55, min(90, base_score + random.randint(-4, 4)))
             
@@ -440,7 +438,6 @@ def onboarding_page():
                 'Budget': budget,
                 'Skin Score': initial_score,
                 'Routine': default_routine_str, # Detailed Routine saved as string
-                'Last Login': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
             if save_user_data(st.session_state.user_email, update_dict):
@@ -1146,7 +1143,6 @@ def consult_expert_page():
             else:
                 st.error("Failed to save consultation request. Google Sheet not connected.")
 
-
 # --- 7. MAIN APP ROUTER ---
 
 # Sidebar Navigation (Always Visible)
@@ -1207,7 +1203,6 @@ if st.session_state.logged_in:
     elif st.session_state.current_page == 'Dashboard':
         dashboard_page()
     elif st.session_state.current_page == 'My Routine':
-        my_routine_page()
     elif st.session_state.current_page == 'Skin Analyzer':
         skin_analyzer_page()
     elif st.session_state.current_page == 'Personalized Kit':
